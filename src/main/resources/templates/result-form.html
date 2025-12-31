@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>BEU Result Downloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        select, input, button {
+            width: 300px;
+            padding: 8px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 25px;
+            background: #1976d2;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #125aa0;
+        }
+    </style>
+</head>
+<body>
+
+<h2>BEU Bulk Result PDF Downloader</h2>
+
+<form method="post" action="/download">
+
+    <label>Semester</label>
+    <select name="semester" required>
+        <option value="I">1st Semester</option>
+        <option value="II">2nd Semester</option>
+        <option value="III">3rd Semester</option>
+        <option value="IV">4th Semester</option>
+        <option value="V">5th Semester</option>
+        <option value="VI">6th Semester</option>
+        <option value="VII">7th Semester</option>
+        <option value="VIII">8th Semester</option>
+    </select>
+
+    <label>Exam Type</label>
+    <select name="examType" required>
+        <option value="REGULAR">Regular</option>
+        <option value="BACKLOG">Backlog</option>
+    </select>
+
+    <label>Examination Year</label>
+    <input type="number" name="examYear" placeholder="2024 / 2025" required />
+
+    <label>Registration Number From</label>
+    <input type="number" name="startReg" required />
+
+    <label>Registration Number To</label>
+    <input type="number" name="endReg" required />
+
+    <label>Download Folder Path</label>
+    <input type="text" name="outputDir" placeholder="D:/beu-results" required />
+
+    <button type="submit">Download All Results</button>
+</form>
+
+</body>
+</html>
