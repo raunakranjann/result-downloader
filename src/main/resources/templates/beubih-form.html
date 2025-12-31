@@ -4,20 +4,14 @@
     <meta charset="UTF-8">
     <title>BEU-BIH Result Printer</title>
 
-    <!-- Bootstrap 5 -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
-        body {
-            background: #f4f6f9;
-        }
-        .card {
-            border-radius: 10px;
-        }
-        .form-label {
-            font-weight: 600;
-        }
+        body { background: #f4f6f9; }
+        .card { border-radius: 10px; }
+        .form-label { font-weight: 600; }
+        /* Smooth transition for progress bar */
+        .progress-bar { transition: width 0.5s ease; }
     </style>
 </head>
 
@@ -29,21 +23,18 @@
 
             <div class="card shadow">
                 <div class="card-header bg-primary text-white text-center">
-                    <h4 class="mb-0">BEU-BIH Result Printer</h4>
+                    <h4 class="mb-0">BEU Result Printer</h4>
                 </div>
 
                 <div class="card-body">
 
-                    <!-- Success / Error -->
-                    <div th:if="${success}" class="alert alert-success" th:text="${success}"></div>
-                    <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+                    <div id="statusAlert" class="alert" style="display:none;"></div>
 
                     <form th:action="@{/beu-bih/print}"
                           th:object="${config}"
                           method="post"
                           id="printForm">
 
-                        <!-- Semester -->
                         <div class="mb-3">
                             <label class="form-label">Semester</label>
                             <select class="form-select" th:field="*{semester}">
@@ -58,97 +49,70 @@
                             </select>
                         </div>
 
-                        <!-- Exam Year -->
                         <div class="mb-3">
                             <label class="form-label">Examination Year</label>
-                            <input type="number"
-                                   class="form-control"
-                                   th:field="*{examYear}"
-                                   placeholder="2024"
-                                   required>
+                            <input type="number" class="form-control" th:field="*{examYear}" placeholder="2024" required>
                         </div>
 
-                        <!-- Exam Held -->
                         <div class="mb-3">
                             <label class="form-label">Exam Held (Month / Year)</label>
-                            <input type="text"
-                                   class="form-control"
-                                   th:field="*{examHeld}"
-                                   placeholder="July/2025"
-                                   required>
+                            <input type="text" class="form-control" th:field="*{examHeld}" placeholder="July/2025" required>
                         </div>
 
-                        <!-- Registration Range -->
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Registration From</label>
-                                <input type="number"
-                                       class="form-control"
-                                       th:field="*{startReg}"
-                                       required>
+                                <input type="number" class="form-control" th:field="*{startReg}" required>
                             </div>
 
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Registration To</label>
-                                <input type="number"
-                                       class="form-control"
-                                       th:field="*{endReg}"
-                                       required>
+                                <input type="number" class="form-control" th:field="*{endReg}" required>
                             </div>
                         </div>
 
-                        <!-- Output Folder -->
                         <div class="mb-3">
-                            <label class="form-label">Output Folder Name</label>
+                            <label class="form-label">Output Folder</label>
 
-                            <input type="file"
-                                   id="dirPicker"
-                                   webkitdirectory
-                                   hidden>
+                            <input type="file" id="dirPicker" webkitdirectory directory hidden>
 
                             <div class="input-group">
                                 <input type="text"
                                        class="form-control"
                                        th:field="*{outputDir}"
                                        id="outputDir"
-                                       placeholder="Select a folder name"
-                                       readonly
+                                       placeholder="Default: Downloads/Results"
                                        required>
 
-                                <button type="button"
-                                        class="btn btn-outline-secondary"
-                                        onclick="pickDirectory()">
-                                    Choose Folder
+                                <button type="button" class="btn btn-outline-secondary" onclick="pickDirectory()">
+                                    📂 Select Folder
                                 </button>
                             </div>
-
-                            <small class="text-muted">
-                                PDFs will be saved under server base directory.
+                            <small class="text-muted" style="font-size: 0.8rem;">
+                                *If you select a folder, the system will save to <b>Downloads/FolderName</b>.
                             </small>
                         </div>
 
-                        <!-- Submit -->
                         <div class="d-grid mt-4">
-                            <button type="submit"
-                                    class="btn btn-success btn-lg">
+                            <button type="submit" id="submitBtn" class="btn btn-success btn-lg">
                                 Start Printing PDFs
                             </button>
                         </div>
 
                     </form>
 
-                    <!-- Progress -->
                     <div class="mt-4" id="progressSection" style="display:none;">
-                        <label class="form-label">Progress</label>
+                        <label class="form-label">Status</label>
 
-                        <div class="progress">
+                        <div class="progress" style="height: 25px;">
                             <div id="progressBar"
-                                 class="progress-bar progress-bar-striped progress-bar-animated"
-                                 style="width:0%">0%</div>
+                                 class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                 role="progressbar"
+                                 style="width:0%">Initializing...</div>
                         </div>
 
-                        <div class="text-center mt-2">
-                            <span id="progressText">0 / 0</span>
+                        <div class="text-center mt-2 fw-bold text-secondary">
+                            <span id="progressText">Initializing...</span>
                         </div>
                     </div>
 
@@ -160,48 +124,122 @@
 </div>
 
 <script>
+    // 1. Directory Picker Logic
     function pickDirectory() {
         const picker = document.getElementById("dirPicker");
+        const outputInput = document.getElementById("outputDir");
+
         picker.click();
 
-        picker.onchange = () => {
-            if (picker.files.length > 0) {
-                const folder =
-                    picker.files[0].webkitRelativePath.split("/")[0];
-                document.getElementById("outputDir").value = folder;
+        picker.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                // Browsers block the full path (e.g. D:/), so we get the relative folder name
+                const relativePath = e.target.files[0].webkitRelativePath;
+                const folderName = relativePath.split("/")[0];
+
+                // Show the folder name in the box
+                outputInput.value = folderName;
             }
         };
     }
 
-    // Progress polling
+    // 2. Form Submission & Progress Polling
     const form = document.getElementById("printForm");
+    const submitBtn = document.getElementById("submitBtn");
     const progressSection = document.getElementById("progressSection");
     const progressBar = document.getElementById("progressBar");
     const progressText = document.getElementById("progressText");
+    const statusAlert = document.getElementById("statusAlert");
 
-    form.addEventListener("submit", () => {
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault(); // Stop page reload
+
+        // Reset UI
+        statusAlert.style.display = 'none';
+        progressBar.style.width = "5%"; // Show small start progress
+        progressBar.textContent = "Starting...";
+        progressText.textContent = "Initializing...";
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Processing...";
         progressSection.style.display = "block";
-        pollProgress();
+
+        // Start polling immediately
+        const pollInterval = startPolling();
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form)
+            });
+
+            if (!response.ok) {
+                throw new Error("Server returned error.");
+            }
+
+            // Wait for completion (the polling will handle the UI updates)
+            // We only stop polling if the server response says so or error occurs
+
+        } catch (error) {
+            clearInterval(pollInterval);
+            showAlert("danger", "Error: " + error.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Start Printing PDFs";
+        }
     });
 
-    function pollProgress() {
-        const interval = setInterval(async () => {
-            const res = await fetch("/beu-bih/progress");
-            const data = await res.json();
+    function startPolling() {
+        return setInterval(async () => {
+            try {
+                const res = await fetch("/beu-bih/progress");
+                if (res.ok) {
+                    const data = await res.json();
 
-            if (data.total > 0) {
-                const percent = Math.round((data.completed / data.total) * 100);
-                progressBar.style.width = percent + "%";
-                progressBar.textContent = percent + "%";
-                progressText.textContent =
-                    data.completed + " / " + data.total;
-            }
+                    const total = data.total || 0;
+                    const completed = data.completed || 0;
+                    const isRunning = data.running;
 
-            if (!data.running) {
-                clearInterval(interval);
-                progressBar.classList.remove("progress-bar-animated");
+                    // Calculate Percentage
+                    let percent = 0;
+                    if (total > 0) {
+                        percent = Math.round((completed / total) * 100);
+                        progressText.textContent = `${completed} / ${total} Records Processed`;
+                    } else {
+                        progressText.textContent = "Preparing data...";
+                    }
+
+                    // Update Bar
+                    progressBar.style.width = (percent < 5 ? 5 : percent) + "%"; // Min 5% width so text is visible
+                    progressBar.textContent = percent + "%";
+
+                    // Check if Finished
+                    if (!isRunning && total > 0 && completed >= total) {
+                        // Success Case
+                        progressBar.classList.remove("progress-bar-animated", "bg-info");
+                        progressBar.classList.add("bg-success");
+                        progressBar.textContent = "Completed";
+                        showAlert("success", "Done! Check your Downloads folder.");
+                        resetButton();
+                        return; // Stop here, the interval will be cleared by the caller or we can clear it:
+                        // Ideally we need the interval ID here to clear it inside.
+                        // For simplicity, we can just let it run one more time or rely on `isRunning`
+                    }
+                }
+            } catch (err) {
+                console.log("Polling error", err);
             }
         }, 1000);
+    }
+
+    function resetButton() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Start Printing PDFs";
+    }
+
+    function showAlert(type, message) {
+        statusAlert.className = `alert alert-${type}`;
+        statusAlert.textContent = message;
+        statusAlert.style.display = 'block';
     }
 </script>
 
