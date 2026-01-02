@@ -1,72 +1,107 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title>BEU Result Downloader</title>
+    <title>BEU Scraper</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-        }
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: bold;
-        }
-        select, input, button {
-            width: 300px;
-            padding: 8px;
-            margin-top: 5px;
-        }
-        button {
-            margin-top: 25px;
-            background: #1976d2;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background: #125aa0;
-        }
+        /* ... Keep your existing CSS styles ... */
+        :root { --primary-color: #2563eb; --card-bg: #ffffff; --bg-color: #f3f4f6; }
+        body { font-family: sans-serif; background: var(--bg-color); display: flex; justify-content: center; height: 100vh; align-items: center; }
+        .container { background: var(--card-bg); padding: 2rem; border-radius: 12px; width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;}
+        button { background: var(--primary-color); color: white; cursor: pointer; border: none; font-weight: bold;}
+        button:disabled { opacity: 0.6; }
+
+        /* Progress Bar Styles */
+        #progress-container { margin-top: 20px; display: none; }
+        .progress-track { background: #e5e7eb; border-radius: 10px; height: 20px; width: 100%; overflow: hidden; }
+        .progress-fill { background: #10b981; height: 100%; width: 0%; transition: width 0.5s ease; }
+        .status-text { margin-top: 5px; font-size: 0.9rem; color: #374151; text-align: center; }
+        .log-text { font-size: 0.8rem; color: #6b7280; text-align: center; margin-top: 2px; }
     </style>
 </head>
 <body>
 
-<h2>BEU Bulk Result PDF Downloader</h2>
+<div class="container">
+    <h2>BEU Scraper</h2>
 
-<form method="post" action="/download">
+    <form id="scrapeForm">
+        <label>Select Exam</label>
+        <select name="linkKey" id="linkKey" required>
+            <option th:each="entry : ${linkMap}" th:value="${entry.key}" th:text="${entry.key}"></option>
+        </select>
 
-    <label>Semester</label>
-    <select name="semester" required>
-        <option value="I">1st Semester</option>
-        <option value="II">2nd Semester</option>
-        <option value="III">3rd Semester</option>
-        <option value="IV">4th Semester</option>
-        <option value="V">5th Semester</option>
-        <option value="VI">6th Semester</option>
-        <option value="VII">7th Semester</option>
-        <option value="VIII">8th Semester</option>
-    </select>
+        <label>Start Reg No</label>
+        <input type="number" name="startReg" required />
 
-    <label>Exam Type</label>
-    <select name="examType" required>
-        <option value="REGULAR">Regular</option>
-        <option value="BACKLOG">Backlog</option>
-    </select>
+        <label>End Reg No</label>
+        <input type="number" name="endReg" required />
 
-    <label>Examination Year</label>
-    <input type="number" name="examYear" placeholder="2024 / 2025" required />
+        <button type="submit" id="submitBtn">Start Scraping</button>
+    </form>
 
-    <label>Registration Number From</label>
-    <input type="number" name="startReg" required />
+    <div id="progress-container">
+        <div class="progress-track">
+            <div class="progress-fill" id="progressBar"></div>
+        </div>
+        <div class="status-text" id="statusText">Waiting...</div>
+        <div class="log-text" id="logText"></div>
+    </div>
+</div>
 
-    <label>Registration Number To</label>
-    <input type="number" name="endReg" required />
+<script>
+    document.getElementById('scrapeForm').addEventListener('submit', function(e) {
+        e.preventDefault(); // Stop page reload
 
-    <label>Download Folder Path</label>
-    <input type="text" name="outputDir" placeholder="D:/beu-results" required />
+        const formData = new FormData(this);
+        const btn = document.getElementById('submitBtn');
+        const container = document.getElementById('progress-container');
 
-    <button type="submit">Download All Results</button>
-</form>
+        // Disable button
+        btn.disabled = true;
+        btn.innerText = "Running...";
+        container.style.display = "block";
+
+        // 1. Send Start Request
+        fetch('/process', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    startPolling();
+                }
+            });
+    });
+
+    function startPolling() {
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const logText = document.getElementById('logText');
+        const btn = document.getElementById('submitBtn');
+
+        const interval = setInterval(() => {
+            fetch('/api/progress')
+                .then(res => res.json())
+                .then(data => {
+                    const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+
+                    // Update UI
+                    progressBar.style.width = percent + "%";
+                    statusText.innerText = `${data.current} / ${data.total} (${percent}%)`;
+                    logText.innerText = data.lastLog;
+
+                    // Stop if finished
+                    if (!data.running && data.total > 0 && data.current >= data.total) {
+                        clearInterval(interval);
+                        statusText.innerText = "Completed!";
+                        btn.disabled = false;
+                        btn.innerText = "Start Scraping";
+                    }
+                });
+        }, 1000); // Check every 1 second
+    }
+</script>
 
 </body>
 </html>

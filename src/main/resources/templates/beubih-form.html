@@ -37,7 +37,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Semester</label>
-                            <select class="form-select" th:field="*{semester}">
+                            <select class="form-select" th:field="*{semester}" name="semester">
                                 <option value="I">1st Semester</option>
                                 <option value="II">2nd Semester</option>
                                 <option value="III">3rd Semester</option>
@@ -51,7 +51,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Examination Year</label>
-                            <input type="number" class="form-control" th:field="*{examYear}" placeholder="2024" required>
+                            <input type="number" class="form-control" th:field="*{examYear}" name="examYear" placeholder="2024" required>
                         </div>
 
                         <div class="mb-3">
@@ -69,28 +69,6 @@
                                 <label class="form-label">Registration To</label>
                                 <input type="number" class="form-control" th:field="*{endReg}" required>
                             </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Output Folder</label>
-
-                            <input type="file" id="dirPicker" webkitdirectory directory hidden>
-
-                            <div class="input-group">
-                                <input type="text"
-                                       class="form-control"
-                                       th:field="*{outputDir}"
-                                       id="outputDir"
-                                       placeholder="Default: Downloads/Results"
-                                       required>
-
-                                <button type="button" class="btn btn-outline-secondary" onclick="pickDirectory()">
-                                    📂 Select Folder
-                                </button>
-                            </div>
-                            <small class="text-muted" style="font-size: 0.8rem;">
-                                *If you select a folder, the system will save to <b>Downloads/FolderName</b>.
-                            </small>
                         </div>
 
                         <div class="d-grid mt-4">
@@ -124,26 +102,7 @@
 </div>
 
 <script>
-    // 1. Directory Picker Logic
-    function pickDirectory() {
-        const picker = document.getElementById("dirPicker");
-        const outputInput = document.getElementById("outputDir");
-
-        picker.click();
-
-        picker.onchange = (e) => {
-            if (e.target.files.length > 0) {
-                // Browsers block the full path (e.g. D:/), so we get the relative folder name
-                const relativePath = e.target.files[0].webkitRelativePath;
-                const folderName = relativePath.split("/")[0];
-
-                // Show the folder name in the box
-                outputInput.value = folderName;
-            }
-        };
-    }
-
-    // 2. Form Submission & Progress Polling
+    // 1. Form Submission & Progress Polling
     const form = document.getElementById("printForm");
     const submitBtn = document.getElementById("submitBtn");
     const progressSection = document.getElementById("progressSection");
@@ -156,9 +115,17 @@
 
         // Reset UI
         statusAlert.style.display = 'none';
-        progressBar.style.width = "5%"; // Show small start progress
+        progressBar.style.width = "5%";
+        progressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-info";
         progressBar.textContent = "Starting...";
         progressText.textContent = "Initializing...";
+
+        // Remove old buttons if exist
+        const oldZipBtn = document.getElementById("downloadBtn");
+        if(oldZipBtn) oldZipBtn.remove();
+
+        const oldPdfBtn = document.getElementById("mergedPdfBtn");
+        if(oldPdfBtn) oldPdfBtn.remove();
 
         submitBtn.disabled = true;
         submitBtn.textContent = "Processing...";
@@ -176,15 +143,10 @@
             if (!response.ok) {
                 throw new Error("Server returned error.");
             }
-
-            // Wait for completion (the polling will handle the UI updates)
-            // We only stop polling if the server response says so or error occurs
-
         } catch (error) {
             clearInterval(pollInterval);
             showAlert("danger", "Error: " + error.message);
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Start Printing PDFs";
+            resetButton();
         }
     });
 
@@ -209,7 +171,7 @@
                     }
 
                     // Update Bar
-                    progressBar.style.width = (percent < 5 ? 5 : percent) + "%"; // Min 5% width so text is visible
+                    progressBar.style.width = (percent < 5 ? 5 : percent) + "%";
                     progressBar.textContent = percent + "%";
 
                     // Check if Finished
@@ -218,17 +180,60 @@
                         progressBar.classList.remove("progress-bar-animated", "bg-info");
                         progressBar.classList.add("bg-success");
                         progressBar.textContent = "Completed";
-                        showAlert("success", "Done! Check your Downloads folder.");
+
+                        showAlert("success", "Done! Files generated on server.");
+
+                        // --- TRIGGER DOWNLOAD BUTTONS ---
+                        createDownloadButton();
+
+                        // Added this call so the merged button actually appears
+                        createMergedDownloadButton();
+
                         resetButton();
-                        return; // Stop here, the interval will be cleared by the caller or we can clear it:
-                        // Ideally we need the interval ID here to clear it inside.
-                        // For simplicity, we can just let it run one more time or rely on `isRunning`
+                        return;
                     }
                 }
             } catch (err) {
                 console.log("Polling error", err);
             }
         }, 1000);
+    }
+
+    function createDownloadButton() {
+        if(document.getElementById("downloadBtn")) return;
+
+        // Get inputs to build the correct filename
+        const year = document.querySelector("input[name='examYear']").value;
+        const semester = document.querySelector("select[name='semester']").value;
+
+        const btn = document.createElement("a");
+        btn.id = "downloadBtn";
+        btn.className = "btn btn-primary w-100 mt-3";
+        btn.innerHTML = "📦 Download All (ZIP)";
+
+        // Calls the Controller endpoint with parameters
+        btn.href = `/beu-bih/download-zip?year=${year}&semester=${semester}`;
+        btn.target = "_blank";
+
+        progressSection.appendChild(btn);
+    }
+
+    function createMergedDownloadButton() {
+        if(document.getElementById("mergedPdfBtn")) return;
+
+        const year = document.querySelector("input[name='examYear']").value;
+        const semester = document.querySelector("select[name='semester']").value;
+
+        const btn = document.createElement("a");
+        btn.id = "mergedPdfBtn";
+        btn.className = "btn btn-danger w-100 mt-2"; // Red button
+        btn.innerHTML = "📄 Download Merged PDF Only";
+
+        // POINT TO THE NEW ENDPOINT
+        btn.href = `/beu-bih/download-merged?year=${year}&semester=${semester}`;
+        btn.target = "_blank"; // Opens download in new tab
+
+        progressSection.appendChild(btn);
     }
 
     function resetButton() {

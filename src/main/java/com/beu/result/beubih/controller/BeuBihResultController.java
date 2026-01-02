@@ -2,15 +2,21 @@ package com.beu.result.beubih.controller;
 
 import com.beu.result.beubih.config.BeuBihDownloaderConfig;
 import com.beu.result.beubih.service.BeuBihResultPrintService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Controller
 @RequestMapping("/beu-bih")
@@ -22,68 +28,38 @@ public class BeuBihResultController {
         this.service = service;
     }
 
-    /**
-     * Show Form with "Downloads/Results" folder pre-selected
-     */
+    private Path getFixedDownloadPath() {
+        return Paths.get(System.getProperty("user.home"), "Downloads", "Results");
+    }
+
     @GetMapping
     public String showForm(Model model) {
         BeuBihDownloaderConfig cfg = new BeuBihDownloaderConfig();
-
-        // 1. Get User Home (e.g., C:\Users\Raunak or /home/raunak)
-        String userHome = System.getProperty("user.home");
-
-        // 2. Build path: Home -> Downloads -> Results
-        // This works for both Windows (\) and Linux (/) automatically
-        String resultPath = Paths.get(userHome, "Downloads", "Results").toAbsolutePath().toString();
-
-        // 3. Set Defaults
         cfg.setSemester("I");
         cfg.setExamYear(2024);
         cfg.setExamHeld("July/2025");
-
-        // 4. Set the Output Directory
-        cfg.setOutputDir(resultPath);
-
+        cfg.setOutputDir(getFixedDownloadPath().toAbsolutePath().toString());
         model.addAttribute("config", cfg);
         return "beubih-form";
     }
 
-    /**
-     * Handle Print Request
-     */
     @PostMapping("/print")
     @ResponseBody
     public ResponseEntity<?> printResults(@ModelAttribute BeuBihDownloaderConfig cfg) {
+        String fixedPath = getFixedDownloadPath().toAbsolutePath().toString();
+        cfg.setOutputDir(fixedPath);
+        File dir = new File(fixedPath);
+        if (!dir.exists()) dir.mkdirs();
 
-        // Fallback: If for some reason the path is empty, reset it to Downloads/Results
-        if (cfg.getOutputDir() == null || cfg.getOutputDir().trim().isEmpty()) {
-            String userHome = System.getProperty("user.home");
-            cfg.setOutputDir(Paths.get(userHome, "Downloads", "Results").toString());
-        }
-
-        System.out.println("===== PRINT REQUEST =====");
-        System.out.println("Target Folder: " + cfg.getOutputDir());
-
-        // 5. AUTO-CREATE FOLDER: If "Results" folder doesn't exist, create it
-        File dir = new File(cfg.getOutputDir());
-        if (!dir.exists()) {
-            boolean created = dir.mkdirs(); // mkdirs() creates parent folders if needed
-            if(created) System.out.println("Created directory: " + cfg.getOutputDir());
-        }
-
-        // Validate Inputs
         if (cfg.getStartReg() <= 0 || cfg.getEndReg() <= 0 || cfg.getStartReg() > cfg.getEndReg()) {
             return ResponseEntity.badRequest().body("Invalid registration range");
         }
 
-        // Run printing in background thread
         new Thread(() -> service.printAll(cfg)).start();
 
-        // Return JSON success
         Map<String, String> response = new HashMap<>();
         response.put("status", "success");
-        response.put("message", "Downloading to: " + cfg.getOutputDir());
-
+        response.put("message", "Generating files...");
         return ResponseEntity.ok(response);
     }
 
@@ -95,5 +71,65 @@ public class BeuBihResultController {
         status.put("completed", com.beu.result.beubih.util.PrintProgress.getCompleted());
         status.put("running", com.beu.result.beubih.util.PrintProgress.isRunning());
         return status;
+    }
+
+    // ==========================================
+    // 1. DOWNLOAD ZIP (Excludes Merged PDF)
+    // ==========================================
+    @GetMapping("/download-zip")
+    public void downloadZip(@RequestParam("year") int year,
+                            @RequestParam("semester") String semester,
+                            HttpServletResponse response) {
+
+        Path sourceDir = getFixedDownloadPath();
+        String zipFilename = "Results_" + year + "_" + semester + ".zip";
+
+        // NAME MUST MATCH SERVICE EXACTLY
+        String mergedFileNameToExclude = "Merged_Result_" + semester + "_Sem_" + year + ".pdf";
+
+        if (!Files.exists(sourceDir)) throw new RuntimeException("Results folder not found!");
+
+        response.setContentType("application/zip");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + zipFilename + "\"");
+
+        try (ZipOutputStream zos = new ZipOutputStream(response.getOutputStream())) {
+            Files.list(sourceDir)
+                    .filter(path -> !Files.isDirectory(path))
+                    .filter(path -> path.toString().toLowerCase().endsWith(".pdf"))
+                    // FILTER: Exclude the merged file
+                    .filter(path -> !path.getFileName().toString().equalsIgnoreCase(mergedFileNameToExclude))
+                    .forEach(path -> {
+                        ZipEntry zipEntry = new ZipEntry(path.getFileName().toString());
+                        try {
+                            zos.putNextEntry(zipEntry);
+                            Files.copy(path, zos);
+                            zos.closeEntry();
+                        } catch (IOException e) { e.printStackTrace(); }
+                    });
+        } catch (IOException e) { throw new RuntimeException("Error generating zip", e); }
+    }
+
+    // ==========================================
+    // 2. DOWNLOAD MERGED PDF
+    // ==========================================
+    @GetMapping("/download-merged")
+    public void downloadMergedPdf(@RequestParam("year") int year,
+                                  @RequestParam("semester") String semester,
+                                  HttpServletResponse response) {
+
+        Path sourceDir = getFixedDownloadPath();
+        // NAME MUST MATCH SERVICE EXACTLY
+        String filename = "Merged_Result_" + semester + "_Sem_" + year + ".pdf";
+        Path file = sourceDir.resolve(filename);
+
+        if (!Files.exists(file)) throw new RuntimeException("Merged PDF not found! Looking for: " + filename);
+
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+
+        try {
+            Files.copy(file, response.getOutputStream());
+            response.getOutputStream().flush();
+        } catch (IOException e) { throw new RuntimeException("Error downloading PDF", e); }
     }
 }
