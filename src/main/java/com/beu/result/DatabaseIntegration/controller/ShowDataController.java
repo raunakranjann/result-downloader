@@ -29,6 +29,7 @@ public class ShowDataController {
             @RequestParam(name = "branch", required = false) String branch,
             @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "rank", required = false) Boolean rank,
+            @RequestParam(name = "showBacklog", required = false) Boolean showBacklog, // <--- NEW PARAMETER
             @RequestParam(name = "page", defaultValue = "1") int page, // Default Page 1
             @RequestParam(name = "size", defaultValue = "20") int size, // Default 20 records per page
             Model model) {
@@ -53,6 +54,9 @@ public class ShowDataController {
         } else {
             paginatedList = allStudents.subList(start, end);
         }
+
+        // Pass the toggle state back to the view
+        model.addAttribute("showBacklog", showBacklog != null && showBacklog);
 
         // 3. Populate Model
         model.addAttribute("students", paginatedList);

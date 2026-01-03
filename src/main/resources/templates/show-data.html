@@ -7,20 +7,36 @@
     <style>
         body { background-color: #f8f9fa; padding: 20px; }
         .table-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 0.9rem; }
-        .grade-cell { text-align: center; font-weight: 600; border: 1px solid #dee2e6; vertical-align: middle; }
 
-        /* Conditional Colors */
-        .bg-red { background-color: #ffe6e6 !important; color: #b00000 !important; }
-        .bg-yellow { background-color: #fff8d6 !important; color: #856404 !important; }
-        .bg-green { background-color: #e6fff2 !important; color: #0f5132 !important; }
+        .grade-cell {
+            padding: 0 !important;
+            height: 100%;
+            vertical-align: middle;
+            border: 1px solid #dee2e6;
+            min-width: 80px;
+        }
+
+        .cell-content {
+            padding: 8px;
+            width: 100%;
+            height: 100%;
+            min-height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+            word-break: break-word;
+        }
+
+        .bg-red { background-color: #ffe6e6; color: #b00000; }
+        .bg-yellow { background-color: #fff8d6; color: #856404; }
+        .bg-green { background-color: #e6fff2; color: #0f5132; }
 
         .cgpa-col { font-weight: bold; color: #0d6efd; background-color: #f1f8ff; vertical-align: middle; }
         .search-card { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px; }
-
-        /* Pagination Styling */
         .page-link { color: #0d6efd; cursor: pointer; }
         .page-item.active .page-link { background-color: #0d6efd; border-color: #0d6efd; color: white; }
-        .page-item.disabled .page-link { color: #6c757d; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -32,7 +48,6 @@
             <a class="navbar-brand fw-bold" href="#">Student Records</a>
             <div class="ms-auto">
                 <a href="/" class="btn btn-outline-light btn-sm">Analytics Dashboard</a>
-                <a href="/Download-results" class="btn btn-outline-light btn-sm">Download Results</a>
                 <a href="/fetch-data" class="btn btn-outline-light btn-sm">Fetch Data</a>
             </div>
         </div>
@@ -57,30 +72,37 @@
                 </select>
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label fw-bold small text-muted">Search Name</label>
                 <input type="text" name="name" class="form-control form-select-sm" placeholder="Enter Name..." th:value="${selectedName}">
             </div>
 
             <div class="col-md-2 text-center">
-                <label class="form-label fw-bold small text-muted d-block">Sort by Rank</label>
-                <div class="form-check d-inline-block">
-                    <input class="form-check-input" type="checkbox" name="rank" value="true" id="rankCheck" th:checked="${isRanked}">
-                    <label class="form-check-label" for="rankCheck">High to Low</label>
+                <label class="form-label fw-bold small text-muted d-block">View Mode</label>
+                <div class="form-check form-switch d-inline-block">
+                    <input class="form-check-input" type="checkbox" name="showBacklog" value="true"
+                           id="backlogToggle" onchange="toggleBacklogView()"
+                           th:checked="${showBacklog}">
+                    <label class="form-check-label fw-bold" for="backlogToggle">Show Backlogs</label>
                 </div>
             </div>
 
-            <div class="col-md-2 d-flex flex-column align-items-end gap-2">
-                <button type="submit" class="btn btn-primary btn-sm w-100">Apply Filters</button>
-                <button type="submit" formaction="/download-excel" class="btn btn-success btn-sm w-100">
-                    Download
-                </button>
+            <div class="col-md-1 text-center">
+                <label class="form-label fw-bold small text-muted d-block">Sort</label>
+                <div class="form-check d-inline-block">
+                    <input class="form-check-input" type="checkbox" name="rank" value="true" id="rankCheck" th:checked="${isRanked}">
+                    <label class="form-check-label" for="rankCheck">Rank</label>
+                </div>
+            </div>
+
+            <div class="col-md-2 d-flex flex-column gap-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                <button type="submit" formaction="/download-excel" class="btn btn-success btn-sm w-100">Export Excel</button>
             </div>
         </form>
     </div>
 
     <div class="table-container table-responsive">
-
         <div class="d-flex justify-content-between align-items-center mb-2">
             <span class="text-muted small">Showing <b th:text="${students.size()}"></b> of <b th:text="${totalItems}"></b> students</span>
             <span class="text-muted small">Page <b th:text="${currentPage}"></b> of <b th:text="${totalPages}"></b></span>
@@ -91,54 +113,39 @@
             <tr>
                 <th style="width: 3%;">#</th>
                 <th style="width: 10%;">Reg No</th>
-                <th style="width: 20%; text-align: left;">Name</th>
-                <th style="width: 25%; text-align: left;">Branch</th>
-                <th style="width: 4%;">S1</th> <th style="width: 4%;">S2</th> <th style="width: 4%;">S3</th> <th style="width: 4%;">S4</th>
-                <th style="width: 4%;">S5</th> <th style="width: 4%;">S6</th> <th style="width: 4%;">S7</th> <th style="width: 4%;">S8</th>
+                <th style="width: 18%; text-align: left;">Name</th>
+                <th style="width: 12%; text-align: left;">Branch</th>
+                <th style="width: 6%;">S1</th> <th style="width: 6%;">S2</th> <th style="width: 6%;">S3</th> <th style="width: 6%;">S4</th>
+                <th style="width: 6%;">S5</th> <th style="width: 6%;">S6</th> <th style="width: 6%;">S7</th> <th style="width: 6%;">S8</th>
                 <th class="bg-primary text-white" style="width: 6%;">CGPA</th>
             </tr>
             </thead>
             <tbody>
             <tr th:each="student, iterStat : ${students}">
                 <td class="text-center fw-bold text-secondary" th:text="${(currentPage - 1) * pageSize + iterStat.count}"></td>
-
                 <td class="text-center fw-bold" th:text="${student.registrationNumber}"></td>
                 <td th:text="${student.studentName}" class="fw-semibold text-start"></td>
-                <td class="text-start" style="max-width: 250px;">
+                <td class="text-start" style="max-width: 150px;">
                     <span class="d-inline-block text-truncate" style="max-width: 100%;" th:title="${student.branch}" th:text="${student.branch}"></span>
                 </td>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem1}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+                <td class="grade-cell" th:each="i : ${#numbers.sequence(1, 8)}"
+                    th:with="
+                        gradeVal=${student.grade != null ? (i==1?student.grade.sem1 : i==2?student.grade.sem2 : i==3?student.grade.sem3 : i==4?student.grade.sem4 : i==5?student.grade.sem5 : i==6?student.grade.sem6 : i==7?student.grade.sem7 : student.grade.sem8) : null},
+                        backlogVal=${student.backlog != null ? (i==1?student.backlog.sem1 : i==2?student.backlog.sem2 : i==3?student.backlog.sem3 : i==4?student.backlog.sem4 : i==5?student.backlog.sem5 : i==6?student.backlog.sem6 : i==7?student.backlog.sem7 : student.backlog.sem8) : 'N/A'},
+                        isNum=${gradeVal != null and gradeVal.matches('[0-9.]+')},
+                        score=${isNum ? T(java.lang.Double).parseDouble(gradeVal) : 0}">
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem2}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+                    <div class="cell-content view-grade"
+                         th:classappend="${isNum ? (score < 5.0 ? 'bg-red' : (score <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
+                         th:text="${gradeVal ?: '-'}">
+                    </div>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem3}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem4}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem5}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem6}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem7}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem8}, isNum=${val != null and val.toString().matches('[0-9.]+')}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+                    <div class="cell-content view-backlog d-none"
+                         th:classappend="${backlogVal == 'PASS' ? 'bg-green' : (backlogVal != null and backlogVal != 'N/A' ? 'bg-red' : '')}"
+                         th:text="${backlogVal ?: '-'}">
+                    </div>
+                </td>
 
                 <td class="text-center cgpa-col" th:text="${student.grade != null ? student.grade.cgpa : '-'}"></td>
             </tr>
@@ -147,28 +154,42 @@
 
         <nav aria-label="Page navigation" th:if="${totalPages > 1}" class="mt-4">
             <ul class="pagination justify-content-center">
-
                 <li class="page-item" th:classappend="${currentPage == 1} ? 'disabled'">
-                    <a class="page-link" th:href="@{/show-data(page=${currentPage - 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked})}">Previous</a>
+                    <a class="page-link" th:href="@{/show-data(page=${currentPage - 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">Previous</a>
                 </li>
-
                 <li class="page-item" th:each="i : ${#numbers.sequence(1, totalPages)}"
                     th:classappend="${currentPage == i} ? 'active'"
                     th:if="${totalPages <= 10 or (i == 1 or i == totalPages or (i >= currentPage - 2 and i <= currentPage + 2))}">
-                    <a class="page-link" th:href="@{/show-data(page=${i}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked})}" th:text="${i}"></a>
+                    <a class="page-link" th:href="@{/show-data(page=${i}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}" th:text="${i}"></a>
                 </li>
-
-                <li class="page-item disabled" th:if="${totalPages > 10 and currentPage < totalPages - 3}">
-                    <span class="page-link">...</span>
-                </li>
-
                 <li class="page-item" th:classappend="${currentPage == totalPages} ? 'disabled'">
-                    <a class="page-link" th:href="@{/show-data(page=${currentPage + 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked})}">Next</a>
+                    <a class="page-link" th:href="@{/show-data(page=${currentPage + 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">Next</a>
                 </li>
             </ul>
         </nav>
     </div>
 </div>
+
+<script>
+    function toggleBacklogView() {
+        const isChecked = document.getElementById('backlogToggle').checked;
+        const gradeViews = document.querySelectorAll('.view-grade');
+        const backlogViews = document.querySelectorAll('.view-backlog');
+
+        if (isChecked) {
+            gradeViews.forEach(el => el.classList.add('d-none'));
+            backlogViews.forEach(el => el.classList.remove('d-none'));
+        } else {
+            gradeViews.forEach(el => el.classList.remove('d-none'));
+            backlogViews.forEach(el => el.classList.add('d-none'));
+        }
+    }
+
+    // Run immediately on page load to restore state
+    document.addEventListener("DOMContentLoaded", function() {
+        toggleBacklogView();
+    });
+</script>
 
 </body>
 </html>

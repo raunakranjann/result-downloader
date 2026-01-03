@@ -13,6 +13,7 @@ public class ResultLinkConfig {
         // Add your links here. The Key is what shows in the Dropdown.
         // The Value is the URL pattern with {REG}
 
+/*
 
         links.put("8th Sem 2025 (Batch 2021-25)",
                 "https://results.beup.ac.in/ResultsBTech8thSem2025Pub.aspx?Sem=VIII&RegNo={REG}");
@@ -27,6 +28,7 @@ public class ResultLinkConfig {
 
         links.put("3rd Sem (Batch 2021-25)","https://results.beup.ac.in/ResultsBTech3rdSem2022_B2021Pub.aspx?Sem=III&RegNo={REG}");
 
+*/
 
 
 
@@ -52,10 +54,8 @@ public class ResultLinkConfig {
 
         links.put("2nd Sem (Batch 2023-27)","https://results.beup.ac.in/ResultsBTech2ndSem2024_B2023Pub.aspx?Sem=II&RegNo={REG}");
 
-        links.put("1st Sem NEW (Batch 2023-27)","https://results.beup.ac.in/ResultsBTech1stSem2024_old_B2023Pub.aspx?Sem=I&RegNo={REG}");
 
-        links.put("1st Sem OLD (Batch 2023-27)", "https://results.beup.ac.in/ResultsBTech1stSem2023_B2023Pub.aspx?Sem=I&RegNo={REG}");
-
+        links.put("1st Sem (Batch 2023-27)", "https://results.beup.ac.in/ResultsBTech1stSem2023_B2023Pub.aspx?Sem=I&RegNo={REG}");
 
 
 
