@@ -1,6 +1,6 @@
-package com.beu.result.beup.repository;
+package com.beu.result.DatabaseIntegration.repository;
 
-import com.beu.result.beup.entity.StudentGrade;
+import com.beu.result.DatabaseIntegration.entity.StudentGrade;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

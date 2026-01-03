@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Store Data</title>
+
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --card-bg: #ffffff;
+            --bg-color: #f3f4f6;
+            --success-color: #10b981;
+            --text-color: #374151;
+            --muted-color: #6b7280;
+        }
+
+        body {
+            font-family: sans-serif;
+            background: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            width: 400px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        h2 { text-align: center; color: var(--text-color); margin-top: 0; }
+
+        label { display: block; margin-bottom: 5px; color: var(--text-color); font-weight: 500; }
+
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        button:hover { background: #1d4ed8; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Progress Bar Section */
+        #progress-container { margin-top: 20px; display: none; }
+
+        .progress-track {
+            background: #e5e7eb;
+            border-radius: 10px;
+            height: 20px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: var(--success-color);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .status-text { margin-top: 8px; font-size: 0.9rem; color: var(--text-color); text-align: center; font-weight: 600; }
+        .log-text { font-size: 0.8rem; color: var(--muted-color); text-align: center; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Store Data</h2>
+
+    <form id="scrapeForm">
+        <label>Select Exam</label>
+        <select name="linkKey" id="linkKey" required>
+            <option th:each="entry : ${linkMap}" th:value="${entry.key}" th:text="${entry.key}"></option>
+        </select>
+
+        <label>Start Reg No</label>
+        <input type="number" name="startReg" required placeholder="e.g., 22101110001" />
+
+        <label>End Reg No</label>
+        <input type="number" name="endReg" required placeholder="e.g., 22101110060" />
+
+        <button type="submit" id="submitBtn">Start Storing</button>
+    </form>
+
+    <div id="progress-container">
+        <div class="progress-track">
+            <div class="progress-fill" id="progressBar"></div>
+        </div>
+        <div class="status-text" id="statusText">Waiting...</div>
+        <div class="log-text" id="logText">Initializing...</div>
+    </div>
+</div>
+
+<script>
+    /*
+     * Form Submission Logic
+     * Intercepts the submit event, disables the button to prevent double-submit,
+     * and sends an asynchronous POST request to the '/process' endpoint.
+     */
+    document.getElementById('scrapeForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const btn = document.getElementById('submitBtn');
+        const container = document.getElementById('progress-container');
+
+        btn.disabled = true;
+        btn.innerText = "Processing...";
+        container.style.display = "block";
+
+        fetch('/process', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    startPolling();
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = "Start Storing";
+            });
+    });
+
+    /*
+     * Polling Logic
+     * Periodically queries the '/api/progress' endpoint every 1 second.
+     * Updates the width of the progress bar and the log text based on the server's response.
+     * Stops polling when the server indicates 'running: false' and the counts match.
+     */
+    function startPolling() {
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const logText = document.getElementById('logText');
+        const btn = document.getElementById('submitBtn');
+
+        const interval = setInterval(() => {
+            fetch('/api/progress')
+                .then(res => res.json())
+                .then(data => {
+                    const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+
+                    progressBar.style.width = percent + "%";
+                    statusText.innerText = `${data.current} / ${data.total} Records Processed (${percent}%)`;
+                    logText.innerText = data.lastLog || "Processing...";
+
+                    if (!data.running && data.total > 0 && data.current >= data.total) {
+                        clearInterval(interval);
+
+                        progressBar.style.width = "100%";
+                        statusText.innerText = "Completed Successfully!";
+                        logText.innerText = "All records fetched.";
+
+                        btn.disabled = false;
+                        btn.innerText = "Start Storing";
+                    }
+                })
+                .catch(err => console.error("Polling error:", err));
+        }, 1000);
+    }
+</script>
+
+</body>
+</html>

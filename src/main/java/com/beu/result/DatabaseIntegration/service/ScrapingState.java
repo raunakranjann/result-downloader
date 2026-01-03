@@ -1,4 +1,4 @@
-package com.beu.result.beup.service;
+package com.beu.result.DatabaseIntegration.service;
 
 import org.springframework.stereotype.Component;
 import java.util.concurrent.atomic.AtomicInteger;

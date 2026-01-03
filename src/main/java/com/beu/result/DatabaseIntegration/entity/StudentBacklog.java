@@ -1,4 +1,4 @@
-package com.beu.result.beup.entity;
+package com.beu.result.DatabaseIntegration.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -8,17 +8,17 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "student_grades")
+@Table(name = "student_backlogs")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class StudentGrade {
+public class StudentBacklog {
 
     @Id
     private Long registrationNumber;
-
     private String studentName;
 
+    // Stores codes like "100304" or "FAIL: 100304"
     private String sem1;
     private String sem2;
     private String sem3;
@@ -27,6 +27,4 @@ public class StudentGrade {
     private String sem6;
     private String sem7;
     private String sem8;
-
-    private String cgpa; // "Average"
 }

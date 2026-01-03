@@ -1,4 +1,4 @@
-package com.beu.result.beubih.util;
+package com.beu.result.DownloadResutls.util;
 
 import java.util.concurrent.atomic.AtomicInteger;
 

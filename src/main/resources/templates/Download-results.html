@@ -3,19 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <title>BEU-BIH Result Printer</title>
-
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
         body { background: #f4f6f9; }
         .card { border-radius: 10px; }
         .form-label { font-weight: 600; }
-        /* Smooth transition for progress bar */
         .progress-bar { transition: width 0.5s ease; }
     </style>
 </head>
 
 <body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="#">🖨️ Result Printer</a>
+        <div class="ms-auto">
+            <a href="/" class="btn btn-outline-light btn-sm">Analytics Dashboard</a>
+            <a href="/fetch-data" class="btn btn-outline-light btn-sm">Fetch Data</a>
+            <a href="/show-data" class="btn btn-outline-light btn-sm">Student Records</a>
+        </div>
+    </div>
+</nav>
 
 <div class="container mt-5">
     <div class="row justify-content-center">
@@ -30,7 +39,7 @@
 
                     <div id="statusAlert" class="alert" style="display:none;"></div>
 
-                    <form th:action="@{/beu-bih/print}"
+                    <form th:action="@{/Download-results/print}"
                           th:object="${config}"
                           method="post"
                           id="printForm">
@@ -81,14 +90,12 @@
 
                     <div class="mt-4" id="progressSection" style="display:none;">
                         <label class="form-label">Status</label>
-
                         <div class="progress" style="height: 25px;">
                             <div id="progressBar"
                                  class="progress-bar progress-bar-striped progress-bar-animated bg-info"
                                  role="progressbar"
                                  style="width:0%">Initializing...</div>
                         </div>
-
                         <div class="text-center mt-2 fw-bold text-secondary">
                             <span id="progressText">Initializing...</span>
                         </div>
@@ -102,7 +109,9 @@
 </div>
 
 <script>
-    // 1. Form Submission & Progress Polling
+    /*
+     * DOM Elements Initialization
+     */
     const form = document.getElementById("printForm");
     const submitBtn = document.getElementById("submitBtn");
     const progressSection = document.getElementById("progressSection");
@@ -110,28 +119,29 @@
     const progressText = document.getElementById("progressText");
     const statusAlert = document.getElementById("statusAlert");
 
+    /*
+     * Form Submission Handler
+     * Intercepts the submit event to perform an asynchronous fetch request.
+     * Resets the UI and initiates the progress polling loop.
+     */
     form.addEventListener("submit", async (e) => {
-        e.preventDefault(); // Stop page reload
+        e.preventDefault();
 
-        // Reset UI
+        // Reset UI State
         statusAlert.style.display = 'none';
         progressBar.style.width = "5%";
         progressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-info";
         progressBar.textContent = "Starting...";
         progressText.textContent = "Initializing...";
 
-        // Remove old buttons if exist
-        const oldZipBtn = document.getElementById("downloadBtn");
-        if(oldZipBtn) oldZipBtn.remove();
-
-        const oldPdfBtn = document.getElementById("mergedPdfBtn");
-        if(oldPdfBtn) oldPdfBtn.remove();
+        // Clean up previous download buttons
+        if(document.getElementById("downloadBtn")) document.getElementById("downloadBtn").remove();
+        if(document.getElementById("mergedPdfBtn")) document.getElementById("mergedPdfBtn").remove();
 
         submitBtn.disabled = true;
         submitBtn.textContent = "Processing...";
         progressSection.style.display = "block";
 
-        // Start polling immediately
         const pollInterval = startPolling();
 
         try {
@@ -150,18 +160,23 @@
         }
     });
 
+    /*
+     * Polling Logic
+     * Periodically checks the '/Download-results/progress' endpoint.
+     * Updates the progress bar and triggers completion actions (Success Alert, Download Buttons)
+     * when the job finishes.
+     */
     function startPolling() {
         return setInterval(async () => {
             try {
-                const res = await fetch("/beu-bih/progress");
+                // Fixed Path: Updated to match DownloadResultsController
+                const res = await fetch("/Download-results/progress");
                 if (res.ok) {
                     const data = await res.json();
-
                     const total = data.total || 0;
                     const completed = data.completed || 0;
                     const isRunning = data.running;
 
-                    // Calculate Percentage
                     let percent = 0;
                     if (total > 0) {
                         percent = Math.round((completed / total) * 100);
@@ -170,23 +185,18 @@
                         progressText.textContent = "Preparing data...";
                     }
 
-                    // Update Bar
                     progressBar.style.width = (percent < 5 ? 5 : percent) + "%";
                     progressBar.textContent = percent + "%";
 
-                    // Check if Finished
                     if (!isRunning && total > 0 && completed >= total) {
-                        // Success Case
                         progressBar.classList.remove("progress-bar-animated", "bg-info");
                         progressBar.classList.add("bg-success");
                         progressBar.textContent = "Completed";
 
                         showAlert("success", "Done! Files generated on server.");
 
-                        // --- TRIGGER DOWNLOAD BUTTONS ---
+                        // Show Download Options
                         createDownloadButton();
-
-                        // Added this call so the merged button actually appears
                         createMergedDownloadButton();
 
                         resetButton();
@@ -199,10 +209,13 @@
         }, 1000);
     }
 
+    /*
+     * Dynamic Button Generators
+     * Creates buttons pointing to the '/download-zip' and '/download-merged' endpoints.
+     */
     function createDownloadButton() {
         if(document.getElementById("downloadBtn")) return;
 
-        // Get inputs to build the correct filename
         const year = document.querySelector("input[name='examYear']").value;
         const semester = document.querySelector("select[name='semester']").value;
 
@@ -211,8 +224,8 @@
         btn.className = "btn btn-primary w-100 mt-3";
         btn.innerHTML = "📦 Download All (ZIP)";
 
-        // Calls the Controller endpoint with parameters
-        btn.href = `/beu-bih/download-zip?year=${year}&semester=${semester}`;
+        // Fixed Path
+        btn.href = `/Download-results/download-zip?year=${year}&semester=${semester}`;
         btn.target = "_blank";
 
         progressSection.appendChild(btn);
@@ -226,12 +239,12 @@
 
         const btn = document.createElement("a");
         btn.id = "mergedPdfBtn";
-        btn.className = "btn btn-danger w-100 mt-2"; // Red button
+        btn.className = "btn btn-danger w-100 mt-2";
         btn.innerHTML = "📄 Download Merged PDF Only";
 
-        // POINT TO THE NEW ENDPOINT
-        btn.href = `/beu-bih/download-merged?year=${year}&semester=${semester}`;
-        btn.target = "_blank"; // Opens download in new tab
+        // Fixed Path
+        btn.href = `/Download-results/download-merged?year=${year}&semester=${semester}`;
+        btn.target = "_blank";
 
         progressSection.appendChild(btn);
     }

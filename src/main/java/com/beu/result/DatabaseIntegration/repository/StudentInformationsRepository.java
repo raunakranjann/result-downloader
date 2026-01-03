@@ -1,6 +1,6 @@
-package com.beu.result.beup.repository;
+package com.beu.result.DatabaseIntegration.repository;
 
-import com.beu.result.beup.entity.StudentResult;
+import com.beu.result.DatabaseIntegration.entity.StudentResult;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface StudentResultRepository extends JpaRepository<StudentResult, Long> {
+public interface StudentInformationsRepository extends JpaRepository<StudentResult, Long> {
 
     // 1. Get Distinct Branches
     @Query("SELECT DISTINCT s.branch FROM StudentResult s WHERE s.branch IS NOT NULL ORDER BY s.branch")

@@ -1,11 +1,11 @@
-package com.beu.result.beup.service;
+package com.beu.result.DatabaseIntegration.service;
 
-import com.beu.result.beup.entity.StudentBacklog;
-import com.beu.result.beup.entity.StudentGrade;
-import com.beu.result.beup.entity.StudentResult;
-import com.beu.result.beup.repository.StudentBacklogRepository;
-import com.beu.result.beup.repository.StudentGradeRepository;
-import com.beu.result.beup.repository.StudentResultRepository;
+import com.beu.result.DatabaseIntegration.entity.StudentBacklog;
+import com.beu.result.DatabaseIntegration.entity.StudentGrade;
+import com.beu.result.DatabaseIntegration.entity.StudentResult;
+import com.beu.result.DatabaseIntegration.repository.StudentBacklogRepository;
+import com.beu.result.DatabaseIntegration.repository.StudentGradeRepository;
+import com.beu.result.DatabaseIntegration.repository.StudentInformationsRepository;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 public class ResultPrintService {
 
     @Autowired
-    private StudentResultRepository resultRepository;
+    private StudentInformationsRepository resultRepository;
     @Autowired
     private StudentGradeRepository gradeRepository;
     @Autowired

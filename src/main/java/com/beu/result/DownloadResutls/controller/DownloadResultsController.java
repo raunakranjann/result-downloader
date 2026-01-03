@@ -1,7 +1,7 @@
-package com.beu.result.beubih.controller;
+package com.beu.result.DownloadResutls.controller;
 
-import com.beu.result.beubih.config.BeuBihDownloaderConfig;
-import com.beu.result.beubih.service.BeuBihResultPrintService;
+import com.beu.result.DownloadResutls.config.BeuBihDownloaderConfig;
+import com.beu.result.DownloadResutls.service.ResultDownloadService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -18,31 +18,49 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+/**
+ * Controller responsible for the result downloading module.
+ * It handles the UI for selecting exam criteria, triggers the PDF generation process,
+ * tracks progress, and provides endpoints to download results as a ZIP archive or a single merged PDF.
+ */
 @Controller
-@RequestMapping("/beu-bih")
-public class BeuBihResultController {
+@RequestMapping("/Download-results")
+public class DownloadResultsController {
 
-    private final BeuBihResultPrintService service;
+    private final ResultDownloadService service;
 
-    public BeuBihResultController(BeuBihResultPrintService service) {
+    public DownloadResultsController(ResultDownloadService service) {
         this.service = service;
     }
 
+    /**
+     * Helper method to determine the fixed output directory for generated results.
+     * Defaults to the 'Downloads/Results' folder in the user's home directory.
+     */
     private Path getFixedDownloadPath() {
         return Paths.get(System.getProperty("user.home"), "Downloads", "Results");
     }
 
+    /**
+     * Renders the main form for the result downloader.
+     * Initializes the configuration object with default values (e.g., Semester V, Year 2024).
+     */
     @GetMapping
     public String showForm(Model model) {
         BeuBihDownloaderConfig cfg = new BeuBihDownloaderConfig();
-        cfg.setSemester("I");
+        cfg.setSemester("V");
         cfg.setExamYear(2024);
         cfg.setExamHeld("July/2025");
         cfg.setOutputDir(getFixedDownloadPath().toAbsolutePath().toString());
         model.addAttribute("config", cfg);
-        return "beubih-form";
+        return "Download-results";
     }
 
+    /**
+     * Handles the form submission to start the printing process.
+     * Validates the input range, ensures the output directory exists, and triggers
+     * the scraping service in a separate background thread to avoid blocking the UI.
+     */
     @PostMapping("/print")
     @ResponseBody
     public ResponseEntity<?> printResults(@ModelAttribute BeuBihDownloaderConfig cfg) {
@@ -63,19 +81,24 @@ public class BeuBihResultController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * API endpoint to poll the current status of the background printing task.
+     * Returns the total records, number completed, and running status.
+     */
     @GetMapping("/progress")
     @ResponseBody
     public Map<String, Object> progress() {
         Map<String, Object> status = new HashMap<>();
-        status.put("total", com.beu.result.beubih.util.PrintProgress.getTotal());
-        status.put("completed", com.beu.result.beubih.util.PrintProgress.getCompleted());
-        status.put("running", com.beu.result.beubih.util.PrintProgress.isRunning());
+        status.put("total", com.beu.result.DownloadResutls.util.PrintProgress.getTotal());
+        status.put("completed", com.beu.result.DownloadResutls.util.PrintProgress.getCompleted());
+        status.put("running", com.beu.result.DownloadResutls.util.PrintProgress.isRunning());
         return status;
     }
 
-    // ==========================================
-    // 1. DOWNLOAD ZIP (Excludes Merged PDF)
-    // ==========================================
+    /**
+     * Generates and downloads a ZIP archive containing individual student result PDFs.
+     * Explicitly excludes the "Merged Result" PDF to prevent duplication within the archive.
+     */
     @GetMapping("/download-zip")
     public void downloadZip(@RequestParam("year") int year,
                             @RequestParam("semester") String semester,
@@ -83,8 +106,6 @@ public class BeuBihResultController {
 
         Path sourceDir = getFixedDownloadPath();
         String zipFilename = "Results_" + year + "_" + semester + ".zip";
-
-        // NAME MUST MATCH SERVICE EXACTLY
         String mergedFileNameToExclude = "Merged_Result_" + semester + "_Sem_" + year + ".pdf";
 
         if (!Files.exists(sourceDir)) throw new RuntimeException("Results folder not found!");
@@ -96,7 +117,6 @@ public class BeuBihResultController {
             Files.list(sourceDir)
                     .filter(path -> !Files.isDirectory(path))
                     .filter(path -> path.toString().toLowerCase().endsWith(".pdf"))
-                    // FILTER: Exclude the merged file
                     .filter(path -> !path.getFileName().toString().equalsIgnoreCase(mergedFileNameToExclude))
                     .forEach(path -> {
                         ZipEntry zipEntry = new ZipEntry(path.getFileName().toString());
@@ -104,21 +124,25 @@ public class BeuBihResultController {
                             zos.putNextEntry(zipEntry);
                             Files.copy(path, zos);
                             zos.closeEntry();
-                        } catch (IOException e) { e.printStackTrace(); }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
                     });
-        } catch (IOException e) { throw new RuntimeException("Error generating zip", e); }
+        } catch (IOException e) {
+            throw new RuntimeException("Error generating zip", e);
+        }
     }
 
-    // ==========================================
-    // 2. DOWNLOAD MERGED PDF
-    // ==========================================
+    /**
+     * Downloads the single merged PDF containing all result pages.
+     * Validates the existence of the specific merged file before streaming it to the response.
+     */
     @GetMapping("/download-merged")
     public void downloadMergedPdf(@RequestParam("year") int year,
                                   @RequestParam("semester") String semester,
                                   HttpServletResponse response) {
 
         Path sourceDir = getFixedDownloadPath();
-        // NAME MUST MATCH SERVICE EXACTLY
         String filename = "Merged_Result_" + semester + "_Sem_" + year + ".pdf";
         Path file = sourceDir.resolve(filename);
 
@@ -130,6 +154,8 @@ public class BeuBihResultController {
         try {
             Files.copy(file, response.getOutputStream());
             response.getOutputStream().flush();
-        } catch (IOException e) { throw new RuntimeException("Error downloading PDF", e); }
+        } catch (IOException e) {
+            throw new RuntimeException("Error downloading PDF", e);
+        }
     }
 }

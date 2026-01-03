@@ -1,4 +1,4 @@
-package com.beu.result.beup.entity;
+package com.beu.result.DatabaseIntegration.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

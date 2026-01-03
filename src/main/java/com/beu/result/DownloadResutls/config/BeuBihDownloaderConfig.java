@@ -1,4 +1,4 @@
-package com.beu.result.beubih.config;
+package com.beu.result.DownloadResutls.config;
 
 /**
  * Configuration object for BEU-BIH result printing.

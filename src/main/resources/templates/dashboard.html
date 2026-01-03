@@ -1,146 +1,226 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title>Student Result Dashboard</title>
+    <title>Analytics Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
-        body { background-color: #f8f9fa; padding: 20px; }
-        .table-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 0.9rem;}
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
 
-        /* Table Styling */
-        .grade-cell { text-align: center; font-weight: 600; border: 1px solid #dee2e6; vertical-align: middle; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .chart-container { position: relative; height: 350px; width: 100%; }
 
-        /* CELL BACKGROUND COLORS */
-        .bg-red { background-color: #ffe6e6 !important; color: #b00000 !important; }
-        .bg-yellow { background-color: #fff8d6 !important; color: #856404 !important; }
-        .bg-green { background-color: #e6fff2 !important; color: #0f5132 !important; }
+        /* KPI Cards Styling */
+        .kpi-value { font-size: 2.8rem; font-weight: 700; color: #0d6efd; }
+        .kpi-label { font-size: 0.85rem; color: #6c757d; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }
 
-        .cgpa-col { font-weight: bold; color: #0d6efd; background-color: #f1f8ff; vertical-align: middle; }
-        .search-card { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px; }
+        /* Search Bar */
+        .search-card { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
 
-        /* Truncate long text */
-        .text-truncate-cell {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 0; /* Required for flex/table truncation */
+        /* PDF Container - Optimized for A4 Width */
+        #dashboard-content {
+            background-color: #ffffff;
+            padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
         }
     </style>
 </head>
 <body>
 
-<div class="container-fluid">
-    <h2 class="mb-3 text-primary fw-bold"> Student Performance Dashboard</h2>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4 shadow-sm" data-html2canvas-ignore="true">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="#">📊 Result Analytics</a>
+        <div class="ms-auto">
+            <button onclick="downloadPDF()" class="btn btn-light btn-sm fw-bold me-2">
+                <i class="bi bi-file-earmark-pdf"></i> Download Report
+            </button>
+            <a href="/Download-results" class="btn btn-outline-light btn-sm">Download Results</a>
+            <a href="/fetch-data" class="btn btn-outline-light btn-sm">Fetch Data</a>
+            <a href="/show-data" class="btn btn-outline-light btn-sm">Records</a>
+        </div>
+    </div>
+</nav>
 
-    <div class="search-card">
-        <form action="/dashboard" method="get" class="row g-3 align-items-center">
+<div id="dashboard-content">
 
-            <div class="col-md-3">
+    <div class="search-card" data-html2canvas-ignore="true">
+        <form action="/" method="get" class="row g-3 align-items-center">
+            <div class="col-md-4">
                 <label class="form-label fw-bold small text-muted">Batch Year</label>
                 <select name="year" class="form-select">
                     <option value="All">All Batches</option>
-                    <option th:each="yr : ${batchYears}"
-                            th:value="${yr}"
-                            th:text="'20' + ${yr}"
-                            th:selected="${yr == selectedYear}"></option>
+                    <option th:each="yr : ${batchYears}" th:value="${yr}" th:text="'20' + ${yr}" th:selected="${yr == selectedYear}"></option>
                 </select>
             </div>
-
-            <div class="col-md-4">
+            <div class="col-md-5">
                 <label class="form-label fw-bold small text-muted">Branch</label>
                 <select name="branch" class="form-select">
                     <option value="All">All Branches</option>
-                    <option th:each="br : ${branches}"
-                            th:value="${br}"
-                            th:text="${br}"
-                            th:selected="${br == selectedBranch}"></option>
+                    <option th:each="br : ${branches}" th:value="${br}" th:text="${br}" th:selected="${br == selectedBranch}"></option>
                 </select>
             </div>
-
-            <div class="col-md-2 text-center">
-                <label class="form-label fw-bold small text-muted d-block">Sort by Rank</label>
-                <div class="form-check d-inline-block">
-                    <input class="form-check-input" type="checkbox" name="rank" value="true" id="rankCheck" th:checked="${isRanked}">
-                    <label class="form-check-label" for="rankCheck">High to Low</label>
-                </div>
-            </div>
-
             <div class="col-md-3 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary me-2 w-100">Apply Filters</button>
-                <a href="/dashboard" class="btn btn-outline-secondary w-50">Reset</a>
+                <button type="submit" class="btn btn-primary me-2 w-100">Search</button>
+                <a href="/" class="btn btn-outline-secondary w-50">Reset</a>
             </div>
         </form>
     </div>
 
-    <div class="table-container table-responsive">
-        <table class="table table-bordered table-hover align-middle table-sm">
-            <thead class="table-dark text-center">
-            <tr>
-                <th style="width: 3%;">#</th>
-                <th style="width: 10%;">Reg No</th>
-                <th style="width: 20%; text-align: left;">Name</th>  <th style="width: 25%; text-align: left;">Branch</th> <th style="width: 4%;">S1</th>
-                <th style="width: 4%;">S2</th>
-                <th style="width: 4%;">S3</th>
-                <th style="width: 4%;">S4</th>
-                <th style="width: 4%;">S5</th>
-                <th style="width: 4%;">S6</th>
-                <th style="width: 4%;">S7</th>
-                <th style="width: 4%;">S8</th>
-                <th class="bg-primary text-white" style="width: 6%;">CGPA</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:each="student, iterStat : ${students}">
-                <td class="text-center fw-bold text-secondary" th:text="${iterStat.count}"></td>
+    <div class="mb-5 text-center">
+        <h2 class="text-primary fw-bold mb-2">Academic Performance Report</h2>
 
-                <td class="text-center fw-bold" th:text="${student.registrationNumber}"></td>
+        <p class="text-muted mb-0 fw-bold"
+           th:text="'Batch - ' + (${selectedYear == null || selectedYear == 'All' ? 'All' : '20' + selectedYear}) + '  |  Course - B.Tech  |  Branch - ' + (${selectedBranch == null || selectedBranch == 'All' ? 'All' : selectedBranch})">
+        </p>
 
-                <td th:text="${student.studentName}" class="fw-semibold text-start"></td>
+        <hr class="mt-4 mx-auto" style="width: 100px; border-top: 3px solid #0d6efd; opacity: 1;">
+    </div>
 
-                <td class="text-start" style="max-width: 250px;">
-                    <span class="d-inline-block text-truncate" style="max-width: 100%;"
-                          th:title="${student.branch}"
-                          th:text="${student.branch}"></span>
-                </td>
+    <div class="row mb-5">
+        <div class="col-md-6">
+            <div class="card p-4 text-center h-100 bg-light border-0">
+                <div class="kpi-value" th:text="${totalStudents}">0</div>
+                <div class="kpi-label">Students in Selection</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-4 text-center h-100 bg-light border-0">
+                <div class="kpi-value" th:text="${#numbers.formatDecimal(avgCollegeCgpa, 1, 2)}">0.0</div>
+                <div class="kpi-label">Average CGPA (Selection)</div>
+            </div>
+        </div>
+    </div>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem1}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+    <div class="row mb-5">
+        <div class="col-lg-8 mb-4">
+            <div class="card p-4 h-100 shadow-sm">
+                <h5 class="card-title text-secondary mb-4 fw-bold small">AVERAGE CGPA BY BRANCH</h5>
+                <div class="chart-container">
+                    <canvas id="branchChart"></canvas>
+                </div>
+            </div>
+        </div>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem2}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+        <div class="col-lg-4 mb-4">
+            <div class="card p-4 h-100 shadow-sm">
+                <h5 class="card-title text-secondary mb-4 fw-bold small">PASS / FAIL RATIO</h5>
+                <div class="chart-container">
+                    <canvas id="passFailChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem3}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
+    <div class="row">
+        <div class="col-12">
+            <div class="card p-4 shadow-sm">
+                <h5 class="card-title text-secondary mb-4 fw-bold small">STUDENT GRADE DISTRIBUTION</h5>
+                <div class="chart-container">
+                    <canvas id="gradeDistChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                <td class="grade-cell" th:with="val=${student.grade?.sem4}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem5}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem6}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem7}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="grade-cell" th:with="val=${student.grade?.sem8}, isNum=${val != null and val matches '[0-9.]+'}"
-                    th:classappend="${isNum ? (T(java.lang.Double).parseDouble(val) < 5.0 ? 'bg-red' : (T(java.lang.Double).parseDouble(val) <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                    th:text="${val ?: '-'}"></td>
-
-                <td class="text-center cgpa-col" th:text="${student.grade != null ? student.grade.cgpa : '-'}"></td>
-            </tr>
-            </tbody>
-        </table>
+    <div class="mt-5 text-center text-muted small">
+        <p>Report generated on <span id="date-span"></span></p>
     </div>
 </div>
+
+<script th:inline="javascript">
+    /*<![CDATA[*/
+
+    // Set Date
+    document.getElementById('date-span').innerText = new Date().toLocaleDateString();
+
+    // 1. DATA FROM CONTROLLER
+    const branchLabels = /*[[${branchLabels}]]*/ [];
+    const branchValues = /*[[${branchValues}]]*/ [];
+    const rangeData = /*[[${rangeData}]]*/ [];
+    const passData = /*[[${passData}]]*/ [];
+
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        devicePixelRatio: 3
+    };
+
+    // 2. RENDER CHARTS
+    new Chart(document.getElementById('branchChart'), {
+        type: 'bar',
+        data: {
+            labels: branchLabels,
+            datasets: [{
+                label: 'Avg CGPA',
+                data: branchValues,
+                backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                borderColor: 'rgba(13, 110, 253, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: { ...commonOptions, scales: { y: { beginAtZero: true, max: 10 } } }
+    });
+
+    new Chart(document.getElementById('passFailChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Passed', 'Failed (< 5.0)'],
+            datasets: [{
+                data: passData,
+                backgroundColor: ['#198754', '#dc3545'],
+                hoverOffset: 4
+            }]
+        },
+        options: commonOptions
+    });
+
+    new Chart(document.getElementById('gradeDistChart'), {
+        type: 'line',
+        data: {
+            labels: ['Below 6.0', '6.0 - 7.0', '7.0 - 8.0', '8.0 - 9.0', '9.0 - 10.0'],
+            datasets: [{
+                label: 'Number of Students',
+                data: rangeData,
+                borderColor: '#ffc107',
+                backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: { ...commonOptions, scales: { y: { beginAtZero: true } } }
+    });
+
+    // 3. PROFESSIONAL PDF GENERATOR
+    window.downloadPDF = function() {
+        const { jsPDF } = window.jspdf;
+        const element = document.getElementById('dashboard-content');
+
+        html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            windowWidth: 1400,
+            onclone: (clonedDoc) => {
+                clonedDoc.getElementById('dashboard-content').style.padding = '40px';
+            }
+        }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+
+            const pdf = new jsPDF('p', 'pt', [imgWidth, imgHeight]);
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            pdf.save('Academic_Report.pdf');
+        });
+    }
+
+    /*]]>*/
+</script>
 
 </body>
 </html>
