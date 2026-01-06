@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -35,7 +34,6 @@ public class CertificateGenerationService {
 
     @Async
     public void generateCertificates(ArchivalJobRequest jobRequest) {
-
         String urlTemplate = sourceConfig.getUrl(jobRequest.getLinkKey());
         if (urlTemplate == null) {
             LOG.error("ABORTING: No configuration found for Data Source '{}'", jobRequest.getLinkKey());
@@ -47,7 +45,6 @@ public class CertificateGenerationService {
         int totalRecords = (int) (endReg - startReg + 1);
 
         telemetry.initializeJob(totalRecords);
-        // LOG.info("Starting Archival Batch..."); // Cleaner logs
 
         String safeBatchName = jobRequest.getLinkKey().replaceAll("[^a-zA-Z0-9.-]", "_");
         File outputDir = Paths.get(jobRequest.getStorageLocation(), safeBatchName).toFile();
@@ -55,7 +52,6 @@ public class CertificateGenerationService {
 
         try (Playwright playwright = Playwright.create()) {
             Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
-            // Standard A4-ish viewport for consistent PDF rendering
             BrowserContext context = browser.newContext(new Browser.NewContextOptions()
                     .setViewportSize(1280, 1024));
 
@@ -68,7 +64,6 @@ public class CertificateGenerationService {
             context.close();
             browser.close();
 
-            // Merge Logic
             String mergedFileName = "Merged_Transcript_" + safeBatchName + ".pdf";
             LOG.info("Initiating Merge Sequence inside folder: {}", outputDir.getName());
             mergePdfArtifacts(outputDir.getAbsolutePath(), mergedFileName);
@@ -83,28 +78,34 @@ public class CertificateGenerationService {
 
     private void processSingleRecord(Page page, String urlTemplate, long regNo, String outputDir) {
         String statusMessage;
-        boolean success = false;
-
         try {
             String targetUrl = urlTemplate.replace("{REG}", String.valueOf(regNo));
 
-            // 1. FAST NAVIGATION (COMMIT)
+
+
+
+
             page.navigate(targetUrl, new Page.NavigateOptions()
                     .setTimeout(45000)
-                    .setWaitUntil(WaitUntilState.COMMIT));
+                    .setWaitUntil(WaitUntilState.NETWORKIDLE));
 
-            // 2. SMART WAIT FOR COMPLETENESS
             PageStatus status = waitForDataCompleteness(page);
 
             if (status == PageStatus.READY) {
-                // --- SUCCESS: DATA FOUND ---
+
+
+                // --- STABILITY CHECK: Wait for Legacy Assets to settle ---
+                if (page.locator("#container").count() > 0 && page.locator("app-root").count() == 0) {
+                    page.waitForTimeout(500); // 500ms safety delay for Legacy sites
+                }
+                // --- NEW: UI CLEANUP ONLY FOR LEGACY PORTAL ---
+                cleanLegacyUI(page);
+
                 Path pdfPath = Paths.get(outputDir, regNo + ".pdf");
                 printDynamicPdf(page, pdfPath);
 
                 LOG.info("[Record {}] Archived Successfully.", regNo);
                 statusMessage = "Archived: " + regNo;
-                success = true;
-
             } else if (status == PageStatus.NO_RECORD) {
                 statusMessage = "Skipped (No Record): " + regNo;
             } else if (status == PageStatus.EMPTY) {
@@ -112,54 +113,93 @@ public class CertificateGenerationService {
             } else if (status == PageStatus.NAME_EMPTY) {
                 statusMessage = "Skipped (Name Empty): " + regNo;
             } else {
-                // Timeout / Unknown
                 captureErrorState(page, outputDir, regNo);
                 statusMessage = "Failed (Timeout): " + regNo;
             }
-
         } catch (Exception e) {
             LOG.error("[Record {}] Error: {}", regNo, e.getMessage());
             statusMessage = "Error: " + regNo;
             captureErrorState(page, outputDir, regNo);
         }
-
         telemetry.updateStatus(statusMessage);
     }
 
     // ==========================================
-    // DATA COMPLETENESS LOGIC (Shared Logic)
+    // UI CLEANUP LOGIC (CENTERS LEGACY ONLY)
+    // ==========================================
+
+
+    private void cleanLegacyUI(Page page) {
+        try {
+            // Use a single formatted string to avoid concatenation errors
+            String script = """
+            () => {
+                const legacyContainer = document.querySelector('#container');
+                const isModern = !!document.querySelector('app-root, app-result-three');
+                
+                if (legacyContainer && !isModern) {
+                    const content = legacyContainer.cloneNode(true);
+                    document.body.innerHTML = '';
+                    
+                    // Center content and fix overflow
+                    document.body.style.display = 'flex';
+                    document.body.style.flexDirection = 'column';
+                    document.body.style.alignItems = 'center';
+                    document.body.style.backgroundColor = '#ffffff';
+                    document.body.style.margin = '0';
+                    document.body.style.padding = '10px';
+                    document.body.style.height = 'auto';
+                    document.body.style.minHeight = '0';
+                    document.body.style.overflow = 'hidden';
+
+                    document.body.appendChild(content);
+                    content.style.position = 'static';
+                    content.style.margin = '0 auto';
+                    content.style.float = 'none';
+                    content.style.height = 'auto';
+                }
+            }
+            """;
+            page.evaluate(script);
+        } catch (Exception e) {
+            LOG.warn("Legacy UI cleanup failed: {}", e.getMessage());
+        }
+    }
+
+
+    // ==========================================
+    // DATA COMPLETENESS LOGIC
     // ==========================================
 
     private enum PageStatus { READY, EMPTY, NAME_EMPTY, NO_RECORD, LOADING }
 
     private PageStatus waitForDataCompleteness(Page page) {
         long startTime = System.currentTimeMillis();
-        long timeout = 15000; // 15 Seconds Max Wait
+        long timeout = 15000;
 
         while (System.currentTimeMillis() - startTime < timeout) {
             try {
-                // 1. Explicit Failure
                 if (page.locator("text=/No Record Found|Invalid Registration|Data Not Available/i").count() > 0) {
                     return PageStatus.NO_RECORD;
                 }
 
-                // 2. Table Check
+                // 2. Detect Portal Type via DOM
+                boolean isModern = page.locator("app-root").count() > 0;
+
+
                 Locator table = page.locator("table:has-text('Subject Code')").first();
                 boolean tableHasData = false;
                 if (table.count() > 0) {
                     if (table.locator("tr").count() > 2) {
                         tableHasData = true;
                     } else {
-                        // Headers only -> Empty
                         return PageStatus.EMPTY;
                     }
                 }
 
-                // 3. Name Check
                 boolean nameExists = false;
                 Locator nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
                 if (nameCell.count() == 0) {
-                    // Legacy Selector
                     nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
                 }
 
@@ -168,24 +208,15 @@ public class CertificateGenerationService {
                     if (!nameText.isEmpty() && !nameText.equals("&nbsp;")) {
                         nameExists = true;
                     } else {
-                        // Name cell exists but is blank -> Bad Data
                         return PageStatus.NAME_EMPTY;
                     }
                 }
 
-                // 4. Decision
                 if (nameExists && tableHasData) {
                     return PageStatus.READY;
-                } else if (nameExists || (table.count() > 0 && !tableHasData)) {
-                    // Partial Load -> Wait
-                    Thread.sleep(500);
-                    continue;
                 } else {
-                    // Nothing yet -> Wait
                     Thread.sleep(500);
-                    continue;
                 }
-
             } catch (Exception e) {
                 try { Thread.sleep(500); } catch (InterruptedException ignored) {}
             }
@@ -198,7 +229,6 @@ public class CertificateGenerationService {
     // ==========================================
 
     private void printDynamicPdf(Page page, Path pdfPath) {
-        // Calculate exact dimensions to fit content without whitespace
         Object dimensions = page.evaluate("() => { " +
                 "  const body = document.body;" +
                 "  const html = document.documentElement;" +

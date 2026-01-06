@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 
 /**
  * Service responsible for the automated ingestion of academic records.
- * Updated Strategy: Network Idle + Strict Name Validation.
+ * Updated: Implements "High Water Mark" logic for CGPA protection.
  */
 @Service
 public class TranscriptGenerationService {
@@ -70,14 +70,21 @@ public class TranscriptGenerationService {
             Page page = context.newPage();
 
             for (long regNo = startReg; regNo <= endReg; regNo++) {
+
+                // --- CANCEL CHECK (Optional: Add here if you implement cancellation later) ---
+               /* if (syncStatus.isCancelRequested()) {
+                    LOG.warn("Ingestion Job Cancelled by Admin.");
+                    syncStatus.updateProgress("Job Cancelled.");
+                    break;
+                }*/
+
                 String logMessage = "Ingesting: " + regNo;
                 try {
                     String targetUrl = urlPattern.replace("{REG}", String.valueOf(regNo));
 
-                    // 1. ROBUST NAVIGATION (NETWORKIDLE)
-                    // We wait for the network to be fully idle to ensure no data is lost.
+                    // 1. ROBUST NAVIGATION
                     page.navigate(targetUrl, new Page.NavigateOptions()
-                            .setTimeout(60000) // Increased timeout for slower network idle
+                            .setTimeout(60000)
                             .setWaitUntil(WaitUntilState.NETWORKIDLE));
 
                     // 2. CHECK DATA STATE
@@ -86,6 +93,11 @@ public class TranscriptGenerationService {
                     if (status == PageStatus.READY) {
                         // --- PROCEED (Data is Complete) ---
                         boolean isLegacy = page.locator("#ContentPlaceHolder1_GridView3").count() > 0;
+
+                        // A. Extract Semester FIRST (Needed for Logic)
+                        String curSem = isLegacy ? extractSemesterLegacy(page) : extractSemesterModern(page);
+
+                        // B. Parse Profile
                         StudentInformations profile = isLegacy
                                 ? parseLegacyPortalProfile(page, regNo)
                                 : parseModernPortalProfile(page, regNo);
@@ -93,15 +105,18 @@ public class TranscriptGenerationService {
                         if (profile != null) {
                             resultRepository.save(profile);
 
+                            // C. Parse Grades
                             StudentGrade grades = isLegacy
                                     ? parseLegacyPortalGrades(page, regNo)
                                     : parseModernPortalGrades(page, regNo);
 
-                            if (grades != null) synchronizeGrades(grades, regNo);
+                            // D. Synchronize Grades with "High Water Mark" Logic
+                            if (grades != null) {
+                                synchronizeGrades(grades, regNo, curSem);
+                            }
 
-                            String curSem = isLegacy ? extractSemesterLegacy(page) : extractSemesterModern(page);
+                            // E. Synchronize Backlogs
                             String remarks = isLegacy ? extractRemarksLegacy(page) : extractRemarksModern(page);
-
                             if (curSem != null) synchronizeBacklogs(regNo, curSem, remarks);
 
                             logMessage = "Indexed: " + profile.getStudentName();
@@ -141,43 +156,33 @@ public class TranscriptGenerationService {
 
     private enum PageStatus { READY, EMPTY_TABLE, NAME_EMPTY, NO_RECORD, UNKNOWN }
 
-    /**
-     * Checks the page content immediately (since we used NETWORKIDLE, data should be there).
-     */
     private PageStatus checkPageStatus(Page page) {
-        // 1. Check Explicit Failures
         if (page.locator("text=/No Record Found|Invalid Registration|Data Not Available/i").count() > 0) {
             return PageStatus.NO_RECORD;
         }
 
-        // 2. Validate Student Name (CRITICAL CHECK)
         Locator nameCell;
-        // Check Modern Selector
         nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
         if (nameCell.count() == 0) {
-            // Check Legacy Selector
             nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
         }
 
-        // If Name Cell exists but Value is Empty -> SKIP
         if (nameCell.count() > 0) {
             String nameValue = nameCell.innerText().trim();
             if (nameValue.isEmpty() || nameValue.equals("&nbsp;")) {
                 return PageStatus.NAME_EMPTY;
             }
         } else {
-            // Name cell itself not found (likely blank page)
             return PageStatus.UNKNOWN;
         }
 
-        // 3. Validate Table Data
         Locator table = page.locator("table:has-text('Subject Code')").first();
         if (table.count() > 0) {
             int rows = table.locator("tr").count();
             if (rows > 2) {
-                return PageStatus.READY; // Name Present + Table Data Present
+                return PageStatus.READY;
             } else {
-                return PageStatus.EMPTY_TABLE; // Table Header exists but no rows
+                return PageStatus.EMPTY_TABLE;
             }
         }
 
@@ -185,15 +190,18 @@ public class TranscriptGenerationService {
     }
 
     // ==========================================
-    // PERSISTENCE LOGIC
+    // PERSISTENCE LOGIC (UPDATED)
     // ==========================================
 
-    private void synchronizeGrades(StudentGrade newGrades, Long regNo) {
+    private void synchronizeGrades(StudentGrade newGrades, Long regNo, String incomingSem) {
         Optional<StudentGrade> existingOpt = gradeRepository.findById(regNo);
         StudentGrade target;
 
         if (existingOpt.isPresent()) {
             target = existingOpt.get();
+
+            // 1. SGPA Logic: Always apply "New >= Old" check for every semester field
+            // This satisfies "Scenario B" automatically for SGPAs
             target.setSem1(resolveHigherScore(target.getSem1(), newGrades.getSem1()));
             target.setSem2(resolveHigherScore(target.getSem2(), newGrades.getSem2()));
             target.setSem3(resolveHigherScore(target.getSem3(), newGrades.getSem3()));
@@ -203,10 +211,31 @@ public class TranscriptGenerationService {
             target.setSem7(resolveHigherScore(target.getSem7(), newGrades.getSem7()));
             target.setSem8(resolveHigherScore(target.getSem8(), newGrades.getSem8()));
 
-            if (newGrades.getCgpa() != null && !newGrades.getCgpa().equals("NA")) {
-                target.setCgpa(newGrades.getCgpa());
+            // 2. CGPA Logic: The "High Water Mark" Rule
+            // Determine max semester currently in DB
+            int dbMaxSem = 0;
+            if (target.getSem8() != null && !target.getSem8().equals("NA")) dbMaxSem = 8;
+            else if (target.getSem7() != null && !target.getSem7().equals("NA")) dbMaxSem = 7;
+            else if (target.getSem6() != null && !target.getSem6().equals("NA")) dbMaxSem = 6;
+            else if (target.getSem5() != null && !target.getSem5().equals("NA")) dbMaxSem = 5;
+            else if (target.getSem4() != null && !target.getSem4().equals("NA")) dbMaxSem = 4;
+            else if (target.getSem3() != null && !target.getSem3().equals("NA")) dbMaxSem = 3;
+            else if (target.getSem2() != null && !target.getSem2().equals("NA")) dbMaxSem = 2;
+            else if (target.getSem1() != null && !target.getSem1().equals("NA")) dbMaxSem = 1;
+
+            // Determine incoming semester index
+            int incomingSemIndex = getSemesterOrder(incomingSem);
+
+            // LOGIC: Only update CGPA if incoming sem is New (>) or Current Correction (==)
+            // If incoming is Old (<), we SKIP CGPA update.
+            if (incomingSemIndex >= dbMaxSem) {
+                if (newGrades.getCgpa() != null && !newGrades.getCgpa().equals("NA")) {
+                    target.setCgpa(newGrades.getCgpa());
+                }
             }
+
         } else {
+            // New Record: Save everything
             target = newGrades;
             StudentInformations parent = resultRepository.getReferenceById(regNo);
             target.setStudentInformations(parent);
@@ -246,7 +275,6 @@ public class TranscriptGenerationService {
     private StudentInformations parseModernPortalProfile(Page page, long regNo) {
         try {
             String name = page.locator("tr:has-text('Student Name') >> td").nth(1).innerText().trim();
-            // Double Check: We already checked name in checkPageStatus, but good to be safe
             if (name.isEmpty()) return null;
 
             String father = page.locator("tr:has-text('Father') >> td").nth(1).innerText().trim();
@@ -308,34 +336,18 @@ public class TranscriptGenerationService {
         } catch (Exception e) { return null; }
     }
 
-
-
-// ==========================================
-    // UPDATED REMARKS EXTRACTION LOGIC
-    // ==========================================
-
     private String extractRemarksModern(Page page) {
         try {
-            // 1. Look for the specific red failure text (e.g., "FAIL:100111,100113")
-            // We use a specific selector for the span with class 'text-danger' containing 'FAIL'
             Locator failSpan = page.locator("span.text-danger:has-text('FAIL')").first();
-
             if (failSpan.count() > 0) {
-                // Return the full text including "FAIL:"
                 return failSpan.innerText().trim();
             }
-
-            // 2. Check for ABSENT status
             Locator absentSpan = page.locator("span.text-danger:has-text('ABSENT')").first();
             if (absentSpan.count() > 0) {
                 return "ABSENT";
             }
-
-            // 3. If no red failure/absent text is found, assume PASS
             return "PASS";
-
         } catch (Exception e) {
-            // Log error if needed, but default to PASS to avoid stopping the batch
             return "PASS";
         }
     }
@@ -354,8 +366,6 @@ public class TranscriptGenerationService {
             return (val != null && !val.isEmpty()) ? val : "PASS";
         } catch (Exception e) { return "PASS"; }
     }
-
-
 
     // ==========================================
     // UTILITIES
@@ -378,5 +388,20 @@ public class TranscriptGenerationService {
     private String getTextById(Page page, String selector) {
         Locator loc = page.locator(selector);
         return (loc.count() > 0) ? loc.innerText().trim() : null;
+    }
+
+    private int getSemesterOrder(String sem) {
+        if (sem == null) return 0;
+        switch (sem.trim().toUpperCase()) {
+            case "I": case "1": return 1;
+            case "II": case "2": return 2;
+            case "III": case "3": return 3;
+            case "IV": case "4": return 4;
+            case "V": case "5": return 5;
+            case "VI": case "6": return 6;
+            case "VII": case "7": return 7;
+            case "VIII": case "8": return 8;
+            default: return 0;
+        }
     }
 }
