@@ -8,69 +8,85 @@
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', 'Roboto', sans-serif; padding: 20px; }
 
-        /* Enterprise Table Styling */
         .table-container {
             background: white;
-            padding: 25px;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            font-size: 0.85rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            overflow: hidden;
         }
 
+        .table thead th {
+            background-color: #2c3e50;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        /* --- FIXED COLOR CLASSES (Using !important to force override) --- */
+        .bg-green { background-color: #d4edda !important; color: #155724 !important; font-weight: bold; }
+        .bg-yellow { background-color: #fff3cd !important; color: #856404 !important; font-weight: bold; }
+        .bg-red { background-color: #f8d7da !important; color: #721c24 !important; font-weight: bold; }
+        .bg-na { color: #ccc; font-weight: 400; }
+
+        /* Backlog Styling */
+        .b-fail { background-color: #ffcccc !important; color: #cc0000 !important; font-weight: 900; }
+        .b-pass { background-color: #e8f5e9 !important; color: #2e7d32 !important; font-weight: 600; }
+
+        /* --- UPDATED: FIXED COLUMN WIDTHS & OVERFLOW HANDLING --- */
         .grade-cell {
             padding: 0 !important;
-            height: 100%;
+            height: 45px;
             vertical-align: middle;
-            border: 1px solid #e9ecef;
-            min-width: 75px;
+            /* STRICT COLUMN WIDTH */
+            width: 125px !important;
+            min-width: 125px !important;
+            max-width: 125px !important;
+            text-align: center;
+            border-right: 1px solid #f0f0f0;
+            overflow: hidden;
         }
 
-        .cell-content {
-            padding: 6px;
+        .cell-wrapper {
             width: 100%;
             height: 100%;
-            min-height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
+            cursor: default;
+            white-space: nowrap; /* Prevent wrapping to new lines */
+            overflow: hidden;
         }
 
-        /* Status Colors */
-        .bg-red { background-color: #fff5f5; color: #c0392b; border-left: 3px solid #e74c3c; }
-        .bg-yellow { background-color: #fef9e7; color: #d35400; border-left: 3px solid #f39c12; }
-        .bg-green { background-color: #eafaf1; color: #27ae60; border-left: 3px solid #2ecc71; }
-
-        .cgpa-col {
-            font-weight: 700;
-            color: #2c3e50;
-            background-color: #ecf0f1;
-            vertical-align: middle;
-            border-left: 2px solid #bdc3c7;
+        /* Logic for the "..." truncation */
+        .text-truncate-custom {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            width: 100%;
+            padding: 0 8px;
         }
 
         .search-card {
             background: #ffffff;
             padding: 20px;
             border-radius: 8px;
-            border-left: 5px solid #2980b9;
+            border-left: 5px solid #3498db;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             margin-bottom: 25px;
         }
-
-        .page-link { color: #2980b9; }
-        .page-item.active .page-link { background-color: #2980b9; border-color: #2980b9; }
-
-        /* Navbar */
-        .navbar { background-color: #2c3e50 !important; border-radius: 8px; }
     </style>
 </head>
 <body>
 
 <div class="container-fluid">
 
-    <nav class="navbar navbar-expand-lg navbar-dark mb-4 shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark shadow-sm" style="background-color: #2c3e50; border-radius: 8px; margin-bottom: 20px;">
         <div class="container-fluid px-4">
             <a class="navbar-brand fw-bold" href="/"><i class="bi bi-table me-2"></i> ACADEMIC REGISTRY</a>
             <div class="ms-auto">
@@ -81,8 +97,7 @@
     </nav>
 
     <div class="search-card">
-        <form id="filterForm" action="/reports/student-registry" method="get" class="row g-3 align-items-end">
-
+        <form action="/reports/student-registry" method="get" class="row g-3 align-items-end">
             <div class="col-md-2">
                 <label class="form-label fw-bold small text-muted text-uppercase">Batch Year</label>
                 <select name="year" class="form-select form-select-sm">
@@ -90,7 +105,6 @@
                     <option th:each="yr : ${batchYears}" th:value="${yr}" th:text="'Batch 20' + ${yr}" th:selected="${yr == selectedYear}"></option>
                 </select>
             </div>
-
             <div class="col-md-3">
                 <label class="form-label fw-bold small text-muted text-uppercase">Specialization</label>
                 <select name="branch" class="form-select form-select-sm">
@@ -98,25 +112,24 @@
                     <option th:each="br : ${branches}" th:value="${br}" th:text="${br}" th:selected="${br == selectedBranch}"></option>
                 </select>
             </div>
-
             <div class="col-md-2">
                 <label class="form-label fw-bold small text-muted text-uppercase">Student Search</label>
                 <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" name="name" class="form-control" placeholder="Search by Name..." th:value="${selectedName}">
+                    <input type="text" name="name" class="form-control" placeholder="Name or Reg No..." th:value="${selectedName}">
                 </div>
             </div>
-
             <div class="col-md-2 text-center">
-                <label class="form-label fw-bold small text-muted d-block text-uppercase">Data View</label>
+                <label class="form-label fw-bold small text-muted d-block text-uppercase">View Mode</label>
                 <div class="form-check form-switch d-inline-block">
-                    <input class="form-check-input" type="checkbox" name="showBacklog" value="true"
-                           id="backlogToggle" onchange="toggleBacklogView()"
+                    <input class="form-check-input" type="checkbox"
+                           name="showBacklog" value="true"
+                           id="backlogToggle"
+                           onchange="this.form.submit()"
                            th:checked="${showBacklog}">
                     <label class="form-check-label fw-bold small" for="backlogToggle">Show Backlogs</label>
                 </div>
             </div>
-
             <div class="col-md-1 text-center">
                 <label class="form-label fw-bold small text-muted d-block text-uppercase">Sort</label>
                 <div class="form-check d-inline-block">
@@ -124,84 +137,144 @@
                     <label class="form-check-label small" for="rankCheck">Rank</label>
                 </div>
             </div>
-
             <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary btn-sm flex-fill fw-bold"><i class="bi bi-funnel-fill me-1"></i> FILTER</button>
-                <button type="submit" formaction="/reports/export/excel" class="btn btn-success btn-sm flex-fill fw-bold"><i class="bi bi-file-earmark-excel-fill me-1"></i> EXPORT</button>
+                <button type="submit" class="btn btn-primary btn-sm flex-fill fw-bold">
+                    <i class="bi bi-funnel-fill me-1"></i> FILTER
+                </button>
+
+                <button type="submit" formaction="/reports/export/excel" class="btn btn-success btn-sm flex-fill fw-bold">
+                    <i class="bi bi-file-earmark-excel-fill me-1"></i> EXPORT
+                </button>
             </div>
         </form>
     </div>
 
-    <div class="table-container table-responsive">
-        <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
-            <span class="text-muted small fw-bold">SHOWING <span class="text-dark" th:text="${students.size()}">0</span> OF <span class="text-dark" th:text="${totalItems}">0</span> RECORDS</span>
+    <div class="table-container">
+        <div class="d-flex justify-content-between align-items-center p-3 border-bottom bg-light">
+            <span class="text-muted small fw-bold">
+                <i class="bi bi-list-ul me-1"></i> SHOWING <span class="text-dark" th:text="${students.size()}">0</span> OF <span class="text-dark" th:text="${totalItems}">0</span> RECORDS
+            </span>
             <span class="text-muted small">PAGE <b th:text="${currentPage}">1</b> OF <b th:text="${totalPages}">1</b></span>
         </div>
 
-        <table class="table table-bordered table-hover align-middle table-sm">
-            <thead class="table-dark text-center">
-            <tr>
-                <th style="width: 3%;">#</th>
-                <th style="width: 10%;">REG ID</th>
-                <th style="width: 18%; text-align: left;">STUDENT NAME</th>
-                <th style="width: 12%; text-align: left;">BRANCH</th>
-                <th style="width: 6%;">SEM 1</th> <th style="width: 6%;">SEM 2</th> <th style="width: 6%;">SEM 3</th> <th style="width: 6%;">SEM 4</th>
-                <th style="width: 6%;">SEM 5</th> <th style="width: 6%;">SEM 6</th> <th style="width: 6%;">SEM 7</th> <th style="width: 6%;">SEM 8</th>
-                <th class="bg-secondary text-white" style="width: 6%;">CGPA</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:each="student, iterStat : ${students}">
-                <td class="text-center fw-bold text-secondary" th:text="${(currentPage - 1) * pageSize + iterStat.count}"></td>
-                <td class="text-center fw-bold text-primary" th:text="${student.registrationNumber}"></td>
-                <td th:text="${student.studentName}" class="fw-semibold text-start text-dark"></td>
-                <td class="text-start" style="max-width: 150px;">
-                    <span class="d-inline-block text-truncate text-muted small" style="max-width: 100%;" th:title="${student.branch}" th:text="${student.branch}"></span>
-                </td>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle table-sm mb-0">
+                <thead>
+                <tr>
+                    <th class="text-center" style="width: 50px;">#</th>
+                    <th>Registration No</th>
+                    <th>Student Name</th>
+                    <th>Branch</th>
+                    <th class="text-center grade-cell">S1</th>
+                    <th class="text-center grade-cell">S2</th>
+                    <th class="text-center grade-cell">S3</th>
+                    <th class="text-center grade-cell">S4</th>
+                    <th class="text-center grade-cell">S5</th>
+                    <th class="text-center grade-cell">S6</th>
+                    <th class="text-center grade-cell">S7</th>
+                    <th class="text-center grade-cell">S8</th>
+                    <th class="text-center text-white" style="width: 80px; background-color: #34495e;">CGPA</th>
+                </tr>
+                </thead>
+                <tbody>
 
-                <td class="grade-cell" th:each="i : ${#numbers.sequence(1, 8)}">
+                <tr th:each="student, iterStat : ${students}">
+                    <td class="text-center text-muted" th:text="${(currentPage - 1) * pageSize + iterStat.count}">1</td>
+                    <td class="font-monospace fw-bold text-primary" th:text="${student.registrationNumber}"></td>
+                    <td class="fw-semibold text-dark" th:text="${student.studentName}"></td>
+                    <td class="text-muted small text-uppercase" th:text="${student.branch}"></td>
 
-                    <th:block th:with="
-        gradeVal=${student.grade != null ? student.grade.getSem(i) : null},
-        backlogVal=${student.backlog != null ? student.backlog.getSem(i) : 'N/A'}">
+                    <td class="grade-cell" th:each="i : ${#numbers.sequence(1, 8)}">
 
-                        <div class="cell-content view-grade"
-                             th:with="isNum=${gradeVal != null and gradeVal.matches('[0-9.]+')},
-                      score=${isNum ? T(java.lang.Double).parseDouble(gradeVal) : 0.0}"
-                             th:classappend="${isNum ? (score < 5.0 ? 'bg-red' : (score <= 7.0 ? 'bg-yellow' : 'bg-green')) : ''}"
-                             th:text="${gradeVal ?: '-'}">
+                        <div class="view-grade cell-wrapper"
+                             th:if="${student.grade != null}"
+                             th:with="val=${student.grade.getSem(i)}"
+                             th:classappend="${
+                 val == null || val == 'NA' ? 'bg-na' :
+                 (val.matches('[0-9.]+') && T(java.lang.Double).parseDouble(val) > 7.0 ? 'bg-green' :
+                 (val.matches('[0-9.]+') && T(java.lang.Double).parseDouble(val) >= 5.0 ? 'bg-yellow' : 'bg-red'))
+             }">
+                            <span th:text="${val ?: '-'}">-</span>
+                        </div>
+                        <div class="view-grade cell-wrapper bg-na" th:if="${student.grade == null}">-</div>
+
+                        <div class="view-backlog cell-wrapper d-none"
+                             th:if="${student.grade != null and student.grade.backlog != null}"
+                             th:with="bVal=${student.grade.backlog.getSem(i)}"
+                             th:classappend="${
+                 bVal == 'PASS' ? 'bg-green' :
+                 (bVal != null and bVal != 'NA' ? 'bg-red' : 'bg-na')
+             }">
+
+                            <span th:if="${bVal == 'PASS'}" class="fw-bold">PASS</span>
+
+                            <span th:if="${bVal != null and bVal != 'NA' and bVal != 'PASS'}"
+                                  class="fw-bold text-truncate-custom"
+                                  th:title="${bVal}"
+                                  th:text="${bVal}">
+                            </span>
+
+                            <span th:if="${bVal == null or bVal == 'NA'}" class="text-muted">-</span>
                         </div>
 
-                        <div class="cell-content view-backlog d-none"
-                             th:classappend="${backlogVal == 'PASS' ? 'bg-green' : (backlogVal != null and backlogVal != 'N/A' ? 'bg-red' : '')}"
-                             th:text="${backlogVal ?: '-'}">
+                        <div class="view-backlog cell-wrapper d-none bg-na"
+                             th:if="${student.grade == null or student.grade.backlog == null}">
+                            -
                         </div>
+                    </td>
 
-                    </th:block>
-                </td>
+                    <td class="text-center fw-bold border-start"
+                        th:with="cgpa=${student.grade != null ? student.grade.cgpa : 'NA'}"
+                        th:classappend="${
+            cgpa == 'NA' ? 'bg-na text-muted' :
+            (cgpa.matches('[0-9.]+') && T(java.lang.Double).parseDouble(cgpa) > 7.0 ? 'bg-green' :
+            (cgpa.matches('[0-9.]+') && T(java.lang.Double).parseDouble(cgpa) >= 5.0 ? 'bg-yellow' : 'bg-red'))
+        }">
+                        <span th:text="${cgpa}"></span>
+                    </td>
+                </tr>
 
-                <td class="text-center cgpa-col" th:text="${student.grade != null ? student.grade.cgpa : '-'}"></td>
-            </tr>
-            </tbody>
-        </table>
+                <tr th:if="${#lists.isEmpty(students)}">
+                    <td colspan="13" class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No student records found matching your criteria.
+                    </td>
+                </tr>
 
-        <nav aria-label="Page navigation" th:if="${totalPages > 1}" class="mt-4">
-            <ul class="pagination justify-content-center">
-                <li class="page-item" th:classappend="${currentPage == 1} ? 'disabled'">
-                    <a class="page-link" th:href="@{/reports/student-registry(page=${currentPage - 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}"><i class="bi bi-chevron-left"></i> Prev</a>
-                </li>
+                </tbody>
+            </table>
+        </div>
 
-                <li class="page-item" th:each="i : ${#numbers.sequence(1, totalPages)}"
-                    th:classappend="${currentPage == i} ? 'active'"
-                    th:if="${totalPages <= 10 or (i == 1 or i == totalPages or (i >= currentPage - 2 and i <= currentPage + 2))}">
-                    <a class="page-link" th:href="@{/reports/student-registry(page=${i}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}" th:text="${i}"></a>
-                </li>
+        <div class="d-flex justify-content-center p-3 border-top bg-light" th:if="${totalPages > 1}">
+            <nav aria-label="Page navigation">
+                <ul class="pagination pagination-sm mb-0">
 
-                <li class="page-item" th:classappend="${currentPage == totalPages} ? 'disabled'">
-                    <a class="page-link" th:href="@{/reports/student-registry(page=${currentPage + 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">Next <i class="bi bi-chevron-right"></i></a>
-                </li>
-            </ul>
-        </nav>
+                    <li class="page-item" th:classappend="${currentPage == 1} ? 'disabled'">
+                        <a class="page-link" th:href="@{/reports/student-registry(page=${currentPage - 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">
+                            Prev
+                        </a>
+                    </li>
+
+                    <li class="page-item" th:each="i : ${#numbers.sequence(1, totalPages)}"
+                        th:classappend="${currentPage == i} ? 'active'"
+                        th:if="${totalPages <= 5 or
+                 (i >= currentPage - 2 and i <= currentPage + 2) or
+                 (currentPage < 3 and i <= 5) or
+                 (currentPage > totalPages - 2 and i > totalPages - 5)}">
+
+                        <a class="page-link" th:text="${i}"
+                           th:href="@{/reports/student-registry(page=${i}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">
+                        </a>
+                    </li>
+
+                    <li class="page-item" th:classappend="${currentPage == totalPages} ? 'disabled'">
+                        <a class="page-link" th:href="@{/reports/student-registry(page=${currentPage + 1}, year=${selectedYear}, branch=${selectedBranch}, name=${selectedName}, rank=${isRanked}, showBacklog=${showBacklog})}">
+                            Next
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
     </div>
 </div>
 
@@ -220,7 +293,6 @@
         }
     }
 
-    // Initialize state on load
     document.addEventListener("DOMContentLoaded", function() {
         toggleBacklogView();
     });

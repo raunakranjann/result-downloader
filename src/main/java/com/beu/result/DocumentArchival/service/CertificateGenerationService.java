@@ -1,5 +1,6 @@
 package com.beu.result.DocumentArchival.service;
 
+import com.beu.result.AcademicAnalytics.config.ResultSourceConfig;
 import com.beu.result.DocumentArchival.config.ArchivalJobRequest;
 import com.beu.result.DocumentArchival.util.ArchivalTelemetry;
 import com.microsoft.playwright.*;
@@ -12,74 +13,65 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Map;
 
-/**
- * Service responsible for the automated generation and preservation of academic certificates.
- * <p>
- * Features:
- * 1. Headless Browser Automation (Playwright)
- * 2. Smart Retry Logic for flaky network connections
- * 3. Automatic PDF Merging for batch downloads
- * </p>
- */
 @Service
 public class CertificateGenerationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(CertificateGenerationService.class);
-    private final ArchivalTelemetry telemetry;
 
-    // Dependency Injection
-    public CertificateGenerationService(ArchivalTelemetry telemetry) {
+    private final ArchivalTelemetry telemetry;
+    private final ResultSourceConfig sourceConfig;
+
+    public CertificateGenerationService(ArchivalTelemetry telemetry, ResultSourceConfig sourceConfig) {
         this.telemetry = telemetry;
+        this.sourceConfig = sourceConfig;
     }
 
-    /**
-     * Main Entry Point. Executed Asynchronously.
-     */
     @Async
     public void generateCertificates(ArchivalJobRequest jobRequest) {
+
+        String urlTemplate = sourceConfig.getUrl(jobRequest.getLinkKey());
+        if (urlTemplate == null) {
+            LOG.error("ABORTING: No configuration found for Data Source '{}'", jobRequest.getLinkKey());
+            return;
+        }
 
         long startReg = jobRequest.getRangeStart();
         long endReg = jobRequest.getRangeEnd();
         int totalRecords = (int) (endReg - startReg + 1);
 
-        // 1. Initialize Telemetry
         telemetry.initializeJob(totalRecords);
-        LOG.info("Starting Archival Batch. Range: {}-{}, Total: {}", startReg, endReg, totalRecords);
+        // LOG.info("Starting Archival Batch..."); // Cleaner logs
 
-        // 2. Prepare Output Directory
-        File outputDir = new File(jobRequest.getStorageLocation());
+        String safeBatchName = jobRequest.getLinkKey().replaceAll("[^a-zA-Z0-9.-]", "_");
+        File outputDir = Paths.get(jobRequest.getStorageLocation(), safeBatchName).toFile();
         if (!outputDir.exists()) outputDir.mkdirs();
 
-        // 3. Launch Browser Engine
         try (Playwright playwright = Playwright.create()) {
             Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
-
-            // Emulate a Real User Agent to avoid bot detection
+            // Standard A4-ish viewport for consistent PDF rendering
             BrowserContext context = browser.newContext(new Browser.NewContextOptions()
-                    .setViewportSize(1280, 1024)
-                    .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"));
+                    .setViewportSize(1280, 1024));
 
             Page page = context.newPage();
 
-            // 4. Processing Loop
             for (long currentReg = startReg; currentReg <= endReg; currentReg++) {
-                processSingleRecord(page, jobRequest, currentReg, outputDir.getAbsolutePath());
+                processSingleRecord(page, urlTemplate, currentReg, outputDir.getAbsolutePath());
             }
 
-            // 5. Cleanup & Merging
             context.close();
             browser.close();
 
-            LOG.info("Batch Processing Complete. Initiating Merge Sequence...");
-            String mergedFileName = "Merged_Transcript_" + jobRequest.getTargetSemester() + "_Sem_" + jobRequest.getAcademicSession() + ".pdf";
-            mergePdfArtifacts(jobRequest.getStorageLocation(), mergedFileName);
+            // Merge Logic
+            String mergedFileName = "Merged_Transcript_" + safeBatchName + ".pdf";
+            LOG.info("Initiating Merge Sequence inside folder: {}", outputDir.getName());
+            mergePdfArtifacts(outputDir.getAbsolutePath(), mergedFileName);
 
         } catch (Exception e) {
             LOG.error("Critical Failure in Archival Engine", e);
@@ -89,118 +81,159 @@ public class CertificateGenerationService {
         }
     }
 
-    /**
-     * Handles the logic for a single student record, including retries and validation.
-     * UPDATED: Ensures telemetry updates regardless of Success, Failure, or Skip.
-     */
-    private void processSingleRecord(Page page, ArchivalJobRequest config, long regNo, String outputDir) {
-        boolean isArchived = false;
-        String logPrefix = "[Record " + regNo + "] ";
-        String statusMessage = "Processing " + regNo; // Default status
+    private void processSingleRecord(Page page, String urlTemplate, long regNo, String outputDir) {
+        String statusMessage;
+        boolean success = false;
 
-        // Retry Strategy (Up to 3 attempts)
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            try {
-                String targetUrl = constructTargetUrl(config, regNo);
+        try {
+            String targetUrl = urlTemplate.replace("{REG}", String.valueOf(regNo));
 
-                // A. Navigate
-                page.navigate(targetUrl, new Page.NavigateOptions()
-                        .setTimeout(60000)
-                        .setWaitUntil(WaitUntilState.NETWORKIDLE));
+            // 1. FAST NAVIGATION (COMMIT)
+            page.navigate(targetUrl, new Page.NavigateOptions()
+                    .setTimeout(45000)
+                    .setWaitUntil(WaitUntilState.COMMIT));
 
-                // B. Wait for critical DOM element ("Subject Code" indicates the table is rendering)
-                try {
-                    page.waitForSelector("text=Subject Code", new Page.WaitForSelectorOptions().setTimeout(5000));
-                } catch (TimeoutError ignored) {
-                    // Timeout is expected if the page is blank or "No Record Found"
-                }
+            // 2. SMART WAIT FOR COMPLETENESS
+            PageStatus status = waitForDataCompleteness(page);
 
-                // C. Validation: Check for "No Record Found"
-                if (page.locator("text=No Record Found").count() > 0) {
-                    LOG.warn("{} Skipped - Record does not exist.", logPrefix);
-                    statusMessage = "Skipped (No Record): " + regNo;
-                    isArchived = true; // Treated as handled
-                    break;
-                }
+            if (status == PageStatus.READY) {
+                // --- SUCCESS: DATA FOUND ---
+                Path pdfPath = Paths.get(outputDir, regNo + ".pdf");
+                printDynamicPdf(page, pdfPath);
 
-                // D. Validation: Check Data Table integrity
-                Locator resultTable = page.locator("table:has-text('Subject Code')").first();
-                if (resultTable.count() > 0) {
-                    int rowCount = resultTable.locator("tr").count();
+                LOG.info("[Record {}] Archived Successfully.", regNo);
+                statusMessage = "Archived: " + regNo;
+                success = true;
 
-                    if (rowCount > 1) {
-                        // VALID DATA FOUND -> PRINT PDF
-                        Path pdfPath = Paths.get(outputDir, regNo + ".pdf");
-                        page.pdf(new Page.PdfOptions()
-                                .setPath(pdfPath)
-                                .setFormat("A3")
-                                .setPrintBackground(true));
-
-                        LOG.info("{} Archived Successfully.", logPrefix);
-                        statusMessage = "Archived: " + regNo + ".pdf";
-                        isArchived = true;
-                        break;
-                    } else {
-                        // Table header exists, but no rows -> Empty Data
-                        LOG.warn("{} Skipped - Empty Data Table.", logPrefix);
-                        statusMessage = "Skipped (Empty Table): " + regNo;
-                        isArchived = true;
-                        break;
-                    }
-                } else {
-                    // E. No Table Found -> Likely a Network Glitch or White Screen -> RETRY
-                    if (attempt < 3) {
-                        LOG.debug("{} Content missing. Retrying (Attempt {}/3)...", logPrefix, attempt);
-                        Thread.sleep(2000); // Backoff
-                    }
-                }
-
-            } catch (Exception e) {
-                LOG.error("{} Error on attempt {}: {}", logPrefix, attempt, e.getMessage());
+            } else if (status == PageStatus.NO_RECORD) {
+                statusMessage = "Skipped (No Record): " + regNo;
+            } else if (status == PageStatus.EMPTY) {
+                statusMessage = "Skipped (Empty Table): " + regNo;
+            } else if (status == PageStatus.NAME_EMPTY) {
+                statusMessage = "Skipped (Name Empty): " + regNo;
+            } else {
+                // Timeout / Unknown
+                captureErrorState(page, outputDir, regNo);
+                statusMessage = "Failed (Timeout): " + regNo;
             }
-        }
 
-        // F. Failure Handling: Screenshot
-        if (!isArchived) {
-            LOG.error("{} Failed after 3 attempts.", logPrefix);
+        } catch (Exception e) {
+            LOG.error("[Record {}] Error: {}", regNo, e.getMessage());
+            statusMessage = "Error: " + regNo;
             captureErrorState(page, outputDir, regNo);
-            statusMessage = "Failed: " + regNo;
         }
 
-        // CRITICAL FIX: Update telemetry ONCE per record, regardless of outcome
         telemetry.updateStatus(statusMessage);
     }
 
     // ==========================================
-    // UTILITIES
+    // DATA COMPLETENESS LOGIC (Shared Logic)
     // ==========================================
 
-    private String constructTargetUrl(ArchivalJobRequest cfg, long regNo) {
-        String examName = "B.Tech. " + resolveSemesterSuffix(cfg.getTargetSemester()) + " Semester Examination, " + cfg.getAcademicSession();
-        return "https://beu-bih.ac.in/result-three"
-                + "?name=" + encodeValue(examName)
-                + "&semester=" + encodeValue(cfg.getTargetSemester())
-                + "&session=" + cfg.getAcademicSession()
-                + "&regNo=" + regNo
-                + "&exam_held=" + encodeValue(cfg.getPublicationCycle());
+    private enum PageStatus { READY, EMPTY, NAME_EMPTY, NO_RECORD, LOADING }
+
+    private PageStatus waitForDataCompleteness(Page page) {
+        long startTime = System.currentTimeMillis();
+        long timeout = 15000; // 15 Seconds Max Wait
+
+        while (System.currentTimeMillis() - startTime < timeout) {
+            try {
+                // 1. Explicit Failure
+                if (page.locator("text=/No Record Found|Invalid Registration|Data Not Available/i").count() > 0) {
+                    return PageStatus.NO_RECORD;
+                }
+
+                // 2. Table Check
+                Locator table = page.locator("table:has-text('Subject Code')").first();
+                boolean tableHasData = false;
+                if (table.count() > 0) {
+                    if (table.locator("tr").count() > 2) {
+                        tableHasData = true;
+                    } else {
+                        // Headers only -> Empty
+                        return PageStatus.EMPTY;
+                    }
+                }
+
+                // 3. Name Check
+                boolean nameExists = false;
+                Locator nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
+                if (nameCell.count() == 0) {
+                    // Legacy Selector
+                    nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
+                }
+
+                if (nameCell.count() > 0) {
+                    String nameText = nameCell.innerText().trim();
+                    if (!nameText.isEmpty() && !nameText.equals("&nbsp;")) {
+                        nameExists = true;
+                    } else {
+                        // Name cell exists but is blank -> Bad Data
+                        return PageStatus.NAME_EMPTY;
+                    }
+                }
+
+                // 4. Decision
+                if (nameExists && tableHasData) {
+                    return PageStatus.READY;
+                } else if (nameExists || (table.count() > 0 && !tableHasData)) {
+                    // Partial Load -> Wait
+                    Thread.sleep(500);
+                    continue;
+                } else {
+                    // Nothing yet -> Wait
+                    Thread.sleep(500);
+                    continue;
+                }
+
+            } catch (Exception e) {
+                try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+            }
+        }
+        return PageStatus.LOADING;
+    }
+
+    // ==========================================
+    // PDF UTILITIES
+    // ==========================================
+
+    private void printDynamicPdf(Page page, Path pdfPath) {
+        // Calculate exact dimensions to fit content without whitespace
+        Object dimensions = page.evaluate("() => { " +
+                "  const body = document.body;" +
+                "  const html = document.documentElement;" +
+                "  return {" +
+                "    width: Math.max(body.scrollWidth, body.offsetWidth, html.clientWidth) + 'px'," +
+                "    height: Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight) + 'px'" +
+                "  };" +
+                "}");
+
+        @SuppressWarnings("unchecked")
+        Map<String, String> dimMap = (Map<String, String>) dimensions;
+
+        page.addStyleTag(new Page.AddStyleTagOptions().setContent(
+                "@media print { body { margin: 0; padding: 10px; } @page { margin: 0; } }"
+        ));
+
+        page.pdf(new Page.PdfOptions()
+                .setPath(pdfPath)
+                .setWidth(dimMap.get("width"))
+                .setHeight(dimMap.get("height"))
+                .setPrintBackground(true)
+        );
     }
 
     private void mergePdfArtifacts(String folderPath, String outputFileName) {
         try {
             PDFMergerUtility pdfMerger = new PDFMergerUtility();
             pdfMerger.setDestinationFileName(folderPath + File.separator + outputFileName);
-
             File folder = new File(folderPath);
             File[] files = folder.listFiles((dir, name) ->
                     name.endsWith(".pdf") && !name.equalsIgnoreCase(outputFileName) && !name.startsWith("ERROR_"));
 
             if (files != null && files.length > 0) {
-                // Sort by Registration Number (Filename)
                 Arrays.sort(files, Comparator.comparing(File::getName));
-
-                for (File file : files) {
-                    pdfMerger.addSource(file);
-                }
+                for (File file : files) pdfMerger.addSource(file);
                 pdfMerger.mergeDocuments(null);
                 LOG.info("Merged Document Created: {}", outputFileName);
             }
@@ -214,17 +247,5 @@ public class CertificateGenerationService {
             Path errorShot = Paths.get(outputDir, "ERROR_" + regNo + ".png");
             page.screenshot(new Page.ScreenshotOptions().setPath(errorShot));
         } catch (Exception ignored) {}
-    }
-
-    private String encodeValue(String val) {
-        return URLEncoder.encode(val, StandardCharsets.UTF_8);
-    }
-
-    private String resolveSemesterSuffix(String sem) {
-        return switch (sem) {
-            case "I" -> "1st"; case "II" -> "2nd"; case "III" -> "3rd"; case "IV" -> "4th";
-            case "V" -> "5th"; case "VI" -> "6th"; case "VII" -> "7th"; case "VIII" -> "8th";
-            default -> sem;
-        };
     }
 }

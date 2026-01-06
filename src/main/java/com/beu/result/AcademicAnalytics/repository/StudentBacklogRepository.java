@@ -6,8 +6,7 @@ import org.springframework.stereotype.Repository;
 
 /**
  * Data Access Object (DAO) for Student Backlogs.
- * * This repository is responsible for managing the persistence of academic arrears
- * and liability records across different semesters.
+ * Manages persistence of academic arrears/liabilities.
  */
 @Repository
 public interface StudentBacklogRepository extends JpaRepository<StudentBacklog, Long> {

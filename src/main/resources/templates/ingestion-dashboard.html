@@ -6,7 +6,22 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 
     <style>
-        body { background-color: #f4f6f9; font-family: 'Segoe UI', 'Roboto', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        /* Updated body to allow column flex direction so navbar sits at top */
+        body {
+            background-color: #f4f6f9;
+            font-family: 'Segoe UI', 'Roboto', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column; /* Changed from default to column */
+            align-items: center;
+            /* justify-content: center; Removed to allow navbar to sit at top */
+        }
+
+        /* Added padding to top container to push card down slightly */
+        .main-container {
+            margin-top: 50px;
+            margin-bottom: 50px;
+        }
 
         .card {
             width: 650px;
@@ -73,81 +88,93 @@
 </head>
 <body>
 
-<div class="card">
-    <div class="card-header">
-        <div class="d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold"><i class="bi bi-cloud-arrow-down-fill me-2"></i> INGESTION CONSOLE</h5>
-            <span id="systemStatus" class="status-badge">SYSTEM IDLE</span>
+<nav class="navbar navbar-expand-lg navbar-dark mb-4 shadow-sm w-100" style="background-color: #2c3e50;">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand fw-bold" href="/"><i class="bi bi-table me-2"></i>INGESTION PORTAL</a>
+        <div class="ms-auto">
+            <a href="/" class="btn btn-outline-light btn-sm me-2"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+            <a href="/admin/links" class="btn btn-outline-light btn-sm"><i class="bi bi-cloud-arrow-down me-1"></i> Configure Urls</a>
         </div>
-        <small class="text-white-50">Automated Academic Record Synchronization</small>
     </div>
+</nav>
 
-    <div class="card-body p-4">
-        <form id="ingestionForm">
-            <div class="mb-3">
-                <label class="form-label">Target Data Source</label>
-                <select id="linkKey" class="form-select" required>
-                    <option th:each="entry : ${linkMap}" th:value="${entry.key}" th:text="${entry.key}"></option>
-                    <option th:if="${linkMap == null || linkMap.isEmpty()}" value="Default">No Sources Configured</option>
-                </select>
+<div class="main-container">
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="bi bi-cloud-arrow-down-fill me-2"></i> INGESTION CONSOLE</h5>
+                <span id="systemStatus" class="status-badge">SYSTEM IDLE</span>
             </div>
+            <small class="text-white-50">Automated Academic Record Synchronization</small>
+        </div>
 
-            <div class="row g-3 mb-2">
-                <div class="col-4">
-                    <label class="form-label">Batch Year</label>
-                    <select id="yearSelect" class="form-select" onchange="updateConsolePreview()">
-                        <option value="21">2021</option>
-                        <option value="22" selected>2022</option>
-                        <option value="23">2023</option>
-                        <option value="24">2024</option>
-                        <option value="25">2025</option>
-                        <option value="26">2026</option>
+        <div class="card-body p-4">
+            <form id="ingestionForm">
+                <div class="mb-3">
+                    <label class="form-label">Target Data Source</label>
+                    <select id="linkKey" class="form-select" required>
+                        <option th:each="entry : ${linkMap}" th:value="${entry.key}" th:text="${entry.key}"></option>
+                        <option th:if="${linkMap == null || linkMap.isEmpty()}" value="Default">No Sources Configured</option>
                     </select>
                 </div>
-                <div class="col-8">
-                    <label class="form-label">Engineering Branch</label>
-                    <select id="branchSelect" class="form-select" onchange="updateConsolePreview()">
-                        <option value="All" class="fw-bold text-primary">-- ALL BRANCHES (BATCH MODE) --</option>
+
+                <div class="row g-3 mb-2">
+                    <div class="col-4">
+                        <label class="form-label">Batch Year</label>
+                        <select id="yearSelect" class="form-select" onchange="updateConsolePreview()">
+                            <option value="21">2021</option>
+                            <option value="22" selected>2022</option>
+                            <option value="23">2023</option>
+                            <option value="24">2024</option>
+                            <option value="25">2025</option>
+                            <option value="26">2026</option>
+                        </select>
+                    </div>
+                    <div class="col-8">
+                        <label class="form-label">Engineering Branch</label>
+                        <select id="branchSelect" class="form-select" onchange="updateConsolePreview()">
+                            <option value="All" class="fw-bold text-primary">-- ALL BRANCHES (BATCH MODE) --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Institution Code</label>
+                    <select id="collegeSelect" class="form-select" onchange="updateConsolePreview()">
+                        <option value="All" class="fw-bold text-primary">-- ALL AFFILIATED COLLEGES --</option>
                     </select>
                 </div>
-            </div>
 
-            <div class="mb-3">
-                <label class="form-label">Institution Code</label>
-                <select id="collegeSelect" class="form-select" onchange="updateConsolePreview()">
-                    <option value="All" class="fw-bold text-primary">-- ALL AFFILIATED COLLEGES --</option>
-                </select>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-6">
-                    <label class="form-label">Start Sequence (ID)</label>
-                    <input type="number" id="rollStart" class="form-control" value="1" min="1" max="999" oninput="updateConsolePreview()" required>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label">Start Sequence (ID)</label>
+                        <input type="number" id="rollStart" class="form-control" value="1" min="1" max="999" oninput="updateConsolePreview()" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">End Sequence (ID)</label>
+                        <input type="number" id="rollEnd" class="form-control" value="60" min="1" max="999" oninput="updateConsolePreview()" required>
+                    </div>
                 </div>
-                <div class="col-6">
-                    <label class="form-label">End Sequence (ID)</label>
-                    <input type="number" id="rollEnd" class="form-control" value="60" min="1" max="999" oninput="updateConsolePreview()" required>
+
+                <div class="console-box" id="previewText">
+                    System Ready. Waiting for input...
                 </div>
-            </div>
 
-            <div class="console-box" id="previewText">
-                > System Ready. Waiting for input...
-            </div>
+                <button type="submit" id="submitBtn" class="btn btn-ingest mt-3">
+                    <i class="bi bi-play-circle-fill me-2"></i> INITIATE SYNCHRONIZATION
+                </button>
+            </form>
 
-            <button type="submit" id="submitBtn" class="btn btn-ingest mt-3">
-                <i class="bi bi-play-circle-fill me-2"></i> INITIATE SYNCHRONIZATION
-            </button>
-        </form>
-
-        <div id="progress-section">
-            <div class="d-flex justify-content-between mb-2">
-                <span id="batchStatus" class="small fw-bold text-muted">QUEUE: IDLE</span>
-                <span id="percentText" class="small fw-bold text-primary">0%</span>
+            <div id="progress-section">
+                <div class="d-flex justify-content-between mb-2">
+                    <span id="batchStatus" class="small fw-bold text-muted">QUEUE: IDLE</span>
+                    <span id="percentText" class="small fw-bold text-primary">0%</span>
+                </div>
+                <div class="progress">
+                    <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+                <p id="logText" class="text-center text-muted small mt-2 mb-0">Waiting for job delegation...</p>
             </div>
-            <div class="progress">
-                <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
-            </div>
-            <p id="logText" class="text-center text-muted small mt-2 mb-0">Waiting for job delegation...</p>
         </div>
     </div>
 </div>
@@ -179,7 +206,7 @@
     for(let [label, code] of Object.entries(branchRegistry)) {
         brSel.add(new Option(label, code));
     }
-    brSel.value = "105"; // Default to CSE
+    brSel.value = "All"; // Default to all
 
     for(let [label, code] of Object.entries(collegeRegistry)) {
         colSel.add(new Option(label, code));

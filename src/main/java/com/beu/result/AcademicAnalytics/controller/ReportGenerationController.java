@@ -1,6 +1,6 @@
 package com.beu.result.AcademicAnalytics.controller;
 
-import com.beu.result.AcademicAnalytics.entity.StudentResult;
+import com.beu.result.AcademicAnalytics.entity.StudentInformations; // UPDATED ENTITY
 import com.beu.result.AcademicAnalytics.repository.StudentInfoRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.poi.ss.usermodel.*;
@@ -46,6 +46,7 @@ public class ReportGenerationController {
      */
     @GetMapping("/student-registry")
     public String viewStudentRegistry(
+
             @RequestParam(name = "year", required = false) String year,
             @RequestParam(name = "branch", required = false) String branch,
             @RequestParam(name = "name", required = false) String name,
@@ -57,8 +58,8 @@ public class ReportGenerationController {
 
         long startTime = System.currentTimeMillis();
 
-        // 1. Retrieve & Filter Dataset
-        List<StudentResult> filteredDataset = executeFilterQuery(year, branch, name, rank);
+        // 1. Retrieve & Filter Dataset (Using Updated Entity)
+        List<StudentInformations> filteredDataset = executeFilterQuery(year, branch, name, rank);
 
         // 2. Pagination Logic
         int totalItems = filteredDataset.size();
@@ -71,7 +72,7 @@ public class ReportGenerationController {
         int startIdx = (page - 1) * size;
         int endIdx = Math.min(startIdx + size, totalItems);
 
-        List<StudentResult> pageContent;
+        List<StudentInformations> pageContent;
         if (startIdx >= totalItems) {
             pageContent = Collections.emptyList();
         } else {
@@ -100,15 +101,15 @@ public class ReportGenerationController {
 
         LOG.debug("Registry view loaded. Page {}/{} ({}ms)", page, totalPages, System.currentTimeMillis() - startTime);
 
-        return "student-registry"; // Rename 'show-data.html' to 'student-registry.html'
+        return "student-registry"; // Ensure your HTML file is named 'student-registry.html'
     }
 
     // ==========================================
     // 2. DATA EXPORT (EXCEL)
     // ==========================================
-
     /**
      * Generates and downloads an Excel report of the current filtered view.
+     * Respects the 'showBacklog' toggle to switch between SGPA and Failed Subjects.
      * Endpoint: /reports/export/excel
      */
     @GetMapping("/export/excel")
@@ -117,11 +118,13 @@ public class ReportGenerationController {
             @RequestParam(name = "branch", required = false) String branch,
             @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "rank", required = false) Boolean rank,
+            @RequestParam(defaultValue = "false") boolean showBacklog,
             HttpServletResponse response) throws IOException {
 
-        LOG.info("Initiating Excel export. Filters: [Year={}, Branch={}, Rank={}]", year, branch, rank);
+        LOG.info("Initiating Excel export. Filters: [Year={}, Branch={}, Rank={}, ShowBacklog={}]",
+                year, branch, rank, showBacklog);
 
-        List<StudentResult> dataset = executeFilterQuery(year, branch, name, rank);
+        List<StudentInformations> dataset = executeFilterQuery(year, branch, name, rank);
 
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=academic_registry_export.xlsx");
@@ -147,22 +150,42 @@ public class ReportGenerationController {
 
             // Populate Data
             int rowIdx = 1;
-            for (StudentResult s : dataset) {
+            for (StudentInformations s : dataset) {
                 Row row = sheet.createRow(rowIdx++);
                 row.createCell(0).setCellValue(s.getRegistrationNumber());
                 row.createCell(1).setCellValue(s.getStudentName());
                 row.createCell(2).setCellValue(s.getBranch());
 
                 if (s.getGrade() != null) {
-                    row.createCell(3).setCellValue(s.getGrade().getSem1());
-                    row.createCell(4).setCellValue(s.getGrade().getSem2());
-                    row.createCell(5).setCellValue(s.getGrade().getSem3());
-                    row.createCell(6).setCellValue(s.getGrade().getSem4());
-                    row.createCell(7).setCellValue(s.getGrade().getSem5());
-                    row.createCell(8).setCellValue(s.getGrade().getSem6());
-                    row.createCell(9).setCellValue(s.getGrade().getSem7());
-                    row.createCell(10).setCellValue(s.getGrade().getSem8());
+                    // Determine whether to pull from Grade or Backlog entity
+                    if (showBacklog && s.getGrade().getBacklog() != null) {
+                        // Pull Failed Subjects/Remarks from Backlog
+                        row.createCell(3).setCellValue(s.getGrade().getBacklog().getSem1());
+                        row.createCell(4).setCellValue(s.getGrade().getBacklog().getSem2());
+                        row.createCell(5).setCellValue(s.getGrade().getBacklog().getSem3());
+                        row.createCell(6).setCellValue(s.getGrade().getBacklog().getSem4());
+                        row.createCell(7).setCellValue(s.getGrade().getBacklog().getSem5());
+                        row.createCell(8).setCellValue(s.getGrade().getBacklog().getSem6());
+                        row.createCell(9).setCellValue(s.getGrade().getBacklog().getSem7());
+                        row.createCell(10).setCellValue(s.getGrade().getBacklog().getSem8());
+                    } else {
+                        // Default: Pull SGPA from Grade
+                        row.createCell(3).setCellValue(s.getGrade().getSem1());
+                        row.createCell(4).setCellValue(s.getGrade().getSem2());
+                        row.createCell(5).setCellValue(s.getGrade().getSem3());
+                        row.createCell(6).setCellValue(s.getGrade().getSem4());
+                        row.createCell(7).setCellValue(s.getGrade().getSem5());
+                        row.createCell(8).setCellValue(s.getGrade().getSem6());
+                        row.createCell(9).setCellValue(s.getGrade().getSem7());
+                        row.createCell(10).setCellValue(s.getGrade().getSem8());
+                    }
+                    // Always include CGPA
                     row.createCell(11).setCellValue(s.getGrade().getCgpa());
+                } else {
+                    // Fill with '-' if no grade record exists
+                    for (int j = 3; j <= 11; j++) {
+                        row.createCell(j).setCellValue("-");
+                    }
                 }
             }
 
@@ -172,7 +195,8 @@ public class ReportGenerationController {
             }
 
             workbook.write(response.getOutputStream());
-            LOG.info("Excel export completed successfully. Rows: {}", dataset.size());
+            LOG.info("Excel export completed successfully. Rows: {}, View: {}",
+                    dataset.size(), showBacklog ? "Backlogs" : "Grades");
         }
     }
 
@@ -180,7 +204,7 @@ public class ReportGenerationController {
     // HELPER: FILTERING ENGINE
     // ==========================================
 
-    private List<StudentResult> executeFilterQuery(String year, String branch, String name, Boolean rank) {
+    private List<StudentInformations> executeFilterQuery(String year, String branch, String name, Boolean rank) {
         // 1. Normalize Parameters
         String yearPrefix = (year != null && !year.trim().isEmpty() && !year.equals("All")) ? year.trim() : null;
         if (yearPrefix != null && yearPrefix.length() == 4) yearPrefix = yearPrefix.substring(2);
@@ -188,7 +212,7 @@ public class ReportGenerationController {
         String branchParam = (branch != null && !branch.trim().isEmpty() && !branch.equals("All")) ? branch.trim() : null;
 
         // 2. Database Retrieval
-        List<StudentResult> results;
+        List<StudentInformations> results;
         if (yearPrefix == null && branchParam == null) {
             results = studentRepository.findAll();
         } else {
