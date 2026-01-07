@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Data Ingestion Control Plane</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+    <style>
+        /* Updated body to allow column flex direction so navbar sits at top */
+        body {
+            background-color: #f4f6f9;
+            font-family: 'Segoe UI', 'Roboto', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column; /* Changed from default to column */
+            align-items: center;
+            /* justify-content: center; Removed to allow navbar to sit at top */
+        }
+
+        /* Added padding to top container to push card down slightly */
+        .main-container {
+            margin-top: 50px;
+            margin-bottom: 50px;
+        }
+
+        .card {
+            width: 650px;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            background: white;
+        }
+
+        .card-header {
+            background-color: #2c3e50;
+            color: white;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 20px;
+        }
+
+        .form-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #7f8c8d; letter-spacing: 0.5px; }
+        .form-select, .form-control { border-radius: 4px; border: 1px solid #ced4da; }
+        .form-select:focus, .form-control:focus { border-color: #3498db; box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25); }
+
+        .btn-ingest {
+            background-color: #2980b9;
+            color: white;
+            font-weight: 600;
+            padding: 12px;
+            width: 100%;
+            transition: all 0.3s;
+        }
+        .btn-ingest:hover { background-color: #2c3e50; }
+        .btn-ingest:disabled { background-color: #bdc3c7; }
+
+        /* Console Output Styling */
+        .console-box {
+            background: #2d3436;
+            color: #00b894;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            margin-top: 20px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Progress Bar */
+        #progress-section { display: none; margin-top: 25px; border-top: 1px solid #ecf0f1; padding-top: 20px; }
+        .progress { height: 10px; background-color: #dfe6e9; border-radius: 5px; }
+        .progress-bar { background-color: #00b894; transition: width 0.4s ease; }
+
+        .status-badge {
+            font-size: 0.7rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #636e72;
+            color: white;
+            float: right;
+        }
+        .status-active { background: #00b894; animation: pulse 2s infinite; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark mb-4 shadow-sm w-100" style="background-color: #2c3e50;">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand fw-bold" href="/"><i class="bi bi-table me-2"></i>INGESTION PORTAL</a>
+        <div class="ms-auto">
+            <a href="/" class="btn btn-outline-light btn-sm me-2"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+            <a href="/admin/links" class="btn btn-outline-light btn-sm"><i class="bi bi-cloud-arrow-down me-1"></i> Configure Urls</a>
+        </div>
+    </div>
+</nav>
+
+<div class="main-container">
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="bi bi-cloud-arrow-down-fill me-2"></i> INGESTION CONSOLE</h5>
+                <span id="systemStatus" class="status-badge">SYSTEM IDLE</span>
+            </div>
+            <small class="text-white-50">Automated Academic Record Synchronization</small>
+        </div>
+
+        <div class="card-body p-4">
+            <form id="ingestionForm">
+                <div class="mb-3">
+                    <label class="form-label">Target Data Source</label>
+                    <select id="linkKey" class="form-select" required>
+                        <option th:each="entry : ${linkMap}" th:value="${entry.key}" th:text="${entry.key}"></option>
+                        <option th:if="${linkMap == null || linkMap.isEmpty()}" value="Default">No Sources Configured</option>
+                    </select>
+                </div>
+
+                <div class="row g-3 mb-2">
+                    <div class="col-4">
+                        <label class="form-label">Batch Year</label>
+                        <select id="yearSelect" class="form-select" onchange="updateConsolePreview()">
+                            <option value="21">2021</option>
+                            <option value="22" selected>2022</option>
+                            <option value="23">2023</option>
+                            <option value="24">2024</option>
+                            <option value="25">2025</option>
+                            <option value="26">2026</option>
+                        </select>
+                    </div>
+                    <div class="col-8">
+                        <label class="form-label">Engineering Branch</label>
+                        <select id="branchSelect" class="form-select" onchange="updateConsolePreview()">
+                            <option value="All" class="fw-bold text-primary">-- ALL BRANCHES (BATCH MODE) --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Institution Code</label>
+                    <select id="collegeSelect" class="form-select" onchange="updateConsolePreview()">
+                        <option value="All" class="fw-bold text-primary">-- ALL AFFILIATED COLLEGES --</option>
+                    </select>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label">Start Sequence (ID)</label>
+                        <input type="number" id="rollStart" class="form-control" value="1" min="1" max="999" oninput="updateConsolePreview()" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">End Sequence (ID)</label>
+                        <input type="number" id="rollEnd" class="form-control" value="60" min="1" max="999" oninput="updateConsolePreview()" required>
+                    </div>
+                </div>
+
+                <div class="console-box" id="previewText">
+                    System Ready. Waiting for input...
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn btn-ingest mt-3">
+                    <i class="bi bi-play-circle-fill me-2"></i> INITIATE SYNCHRONIZATION
+                </button>
+            </form>
+
+            <div id="progress-section">
+                <div class="d-flex justify-content-between mb-2">
+                    <span id="batchStatus" class="small fw-bold text-muted">QUEUE: IDLE</span>
+                    <span id="percentText" class="small fw-bold text-primary">0%</span>
+                </div>
+                <div class="progress">
+                    <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+                <p id="logText" class="text-center text-muted small mt-2 mb-0">Waiting for job delegation...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 1. CONFIGURATION REGISTRY
+    // ==========================================
+    const branchRegistry = {
+        "Civil Engineering (101)": "101",
+        "Mechanical Engineering (102)": "102",
+        "Electrical Engineering (103)": "103",
+        "Electronics & Comm. (104)": "104",
+        "Computer Science (105)": "105"
+    };
+
+    const collegeRegistry = {
+        "Siwan College of Engineering (123)": "123",
+        "Government Engineering College (151)": "151"
+    };
+
+    // ==========================================
+    // 2. INITIALIZATION
+    // ==========================================
+    const brSel = document.getElementById('branchSelect');
+    const colSel = document.getElementById('collegeSelect');
+
+    // Populate Dropdowns
+    for(let [label, code] of Object.entries(branchRegistry)) {
+        brSel.add(new Option(label, code));
+    }
+    brSel.value = "All"; // Default to all
+
+    for(let [label, code] of Object.entries(collegeRegistry)) {
+        colSel.add(new Option(label, code));
+    }
+    colSel.value = "123"; // Default to SCEM
+
+    // ==========================================
+    // 3. PREVIEW LOGIC
+    // ==========================================
+    function updateConsolePreview() {
+        const y = document.getElementById('yearSelect').value;
+        const b = brSel.value;
+        const c = colSel.value;
+        const s = document.getElementById('rollStart').value.padStart(3,'0');
+        const e = document.getElementById('rollEnd').value.padStart(3,'0');
+
+        let msg = "> TARGET: ";
+        if(b === 'All' && c === 'All') msg += "Full Batch Ingestion (All Branches/Colleges)";
+        else if(b === 'All') msg += `All Branches @ Inst Code ${c}`;
+        else if(c === 'All') msg += `Branch ${b} @ All Institutions`;
+        else msg += `ID Range ${y}${b}${c}${s} - ${e}`;
+
+        document.getElementById('previewText').innerText = msg;
+    }
+    updateConsolePreview();
+
+    // ==========================================
+    // 4. QUEUE MANAGEMENT SYSTEM
+    // ==========================================
+    let jobQueue = [];
+    let totalJobs = 0;
+    let jobsCompleted = 0;
+
+    document.getElementById('ingestionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        // A. Construct Job Queue
+        jobQueue = [];
+        const year = document.getElementById('yearSelect').value;
+        const s = document.getElementById('rollStart').value.padStart(3,'0');
+        const eRoll = document.getElementById('rollEnd').value.padStart(3,'0');
+        const link = document.getElementById('linkKey').value;
+
+        const targetCols = (colSel.value === 'All') ? Object.values(collegeRegistry) : [colSel.value];
+        const targetBrs = (brSel.value === 'All') ? Object.values(branchRegistry) : [brSel.value];
+
+        targetCols.forEach(cVal => {
+            targetBrs.forEach(bVal => {
+                jobQueue.push({
+                    linkKey: link,
+                    startReg: `${year}${bVal}${cVal}${s}`,
+                    endReg: `${year}${bVal}${cVal}${eRoll}`,
+                    desc: `Inst:${cVal} / Br:${bVal}`
+                });
+            });
+        });
+
+        // B. Lock UI
+        totalJobs = jobQueue.length;
+        jobsCompleted = 0;
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> PROCESSING...';
+
+        document.getElementById('systemStatus').className = "status-badge status-active";
+        document.getElementById('systemStatus').innerText = "SYSTEM ACTIVE";
+        document.getElementById('progress-section').style.display = 'block';
+
+        // C. Start Processing
+        executeNextJob();
+    });
+
+    function executeNextJob() {
+        if(jobQueue.length === 0) {
+            // All Done
+            document.getElementById('logText').innerText = "> All Sync Jobs Completed Successfully.";
+            document.getElementById('systemStatus').className = "status-badge";
+            document.getElementById('systemStatus').innerText = "SYSTEM IDLE";
+            document.getElementById('progressBar').classList.add('bg-success');
+            setTimeout(() => location.reload(), 2000);
+            return;
+        }
+
+        const task = jobQueue.shift();
+        document.getElementById('batchStatus').innerText = `EXECUTING JOB ${jobsCompleted+1}/${totalJobs}: ${task.desc}`;
+
+        // D. Call Backend API
+        const formData = new FormData();
+        formData.append('linkKey', task.linkKey);
+        formData.append('startReg', task.startReg);
+        formData.append('endReg', task.endReg);
+
+        fetch('/api/ingestion/start-batch', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'BATCH_INITIATED') {
+                    monitorProgress();
+                } else {
+                    console.error("Ingestion Denied");
+                    jobsCompleted++;
+                    executeNextJob();
+                }
+            })
+            .catch(err => {
+                console.error("Network Failure", err);
+                alert("Connection to Ingestion Controller Failed.");
+            });
+    }
+
+    function monitorProgress() {
+        const poller = setInterval(() => {
+            fetch('/api/ingestion/progress')
+                .then(res => res.json())
+                .then(data => {
+                    // E. Update Telemetry
+                    // Note: 'jobActive' and 'operationalStatus' come from the Java DataSyncStatus bean
+
+                    const taskPct = data.totalCount > 0 ? (data.processedCount / data.totalCount) : 0;
+                    const totalPct = Math.round(((jobsCompleted + taskPct) / totalJobs) * 100);
+
+                    document.getElementById('progressBar').style.width = totalPct + "%";
+                    document.getElementById('percentText').innerText = totalPct + "%";
+                    document.getElementById('logText').innerText = `> ${data.operationalStatus} [${data.processedCount}/${data.totalCount}]`;
+
+                    // F. Check for Completion
+                    if(!data.jobActive && data.totalCount > 0 && data.processedCount >= data.totalCount) {
+                        clearInterval(poller);
+                        jobsCompleted++;
+                        executeNextJob(); // Chain next batch
+                    }
+                })
+                .catch(e => clearInterval(poller));
+        }, 1000); // Poll every 1 second
+    }
+</script>
+
+</body>
+</html>
