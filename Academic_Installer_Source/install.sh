@@ -17,7 +17,7 @@ echo "Installing $APP_NAME to $INSTALL_DIR..."
 # 3. Copy Files
 mkdir -p "$INSTALL_DIR"
 # Copy files excluding junk
-rsync -av --progress . "$INSTALL_DIR" --exclude .git --exclude target --exclude .idea
+rsync -av --progress . "$INSTALL_DIR" --exclude .git --exclude target --exclude .idea --exclude '*.bat' --exclude '*.iss' --exclude '*.exe'
 
 # 4. FIX PERMISSIONS (Crucial Step!)
 # We give ownership of the folder to the real user so Docker can write to it
