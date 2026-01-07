@@ -10,7 +10,7 @@ AppId={{A1B2C3D4-E5F6-7890-1234-567890ABCDEF}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={sd}\AcademicAnalytics
 DefaultGroupName={#MyAppName}
 ; Only allow installation on 64-bit Windows (required for Docker)
 ArchitecturesAllowed=x64compatible
@@ -48,4 +48,6 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 
 [UninstallRun]
 ; CRITICAL: Stop Docker containers before removing files
-Filename: "{app}\stop_app.bat"; Flags: runhidden waituntilterminated; RunOnceId: "StopDockerApp"
+; 'waituntilterminated' -> Waits for the 2-second timeout to finish so Docker closes properly.
+; 'skipifdoesntexist' -> If the file is missing (deleted manually), ignore it and continue uninstalling.
+Filename: "{app}\stop_app.bat"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopDockerApp"
