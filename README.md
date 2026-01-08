@@ -1,6 +1,6 @@
 ### 📥 Download & Install
 
-[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="250">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/latest)
+[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="250">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/AcademicAnalytics.exe)
 
 [<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="250">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
 
