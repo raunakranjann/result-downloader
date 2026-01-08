@@ -1,25 +1,26 @@
-##  Academic Analytics & Archival System
+# 📂 Academic Analytics (Serverless)
 
+Source code for local-first academic data management.
 
-![Java](https://img.shields.io/badge/Java-17-orange) ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.0-green) ![Playwright](https://img.shields.io/badge/Automation-Playwright-blue) ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
+## 📥 Download Standalone App
+[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="230">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/AcademicAnalytics.exe)
+[<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="200">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
 
-###  Project Overview
-This project is an enterprise-grade solution designed to modernize how academic institutions handle student performance data. It replaces manual result aggregation with an automated **ETL (Ingestion) Pipeline**, provides a **Business Intelligence Dashboard** for real-time insights, and features a **Queue-Based Digital Archival Subsystem** for bulk PDF transcript generation.
+---
 
+## 🚀 Quick Start
+1. **Build:** `mvn clean package`
+2. **Run:** `java -jar target/mainapplication.jar`
 
-###  Key Features
-* **Automated Ingestion Engine:** Uses Microsoft Playwright (Headless Chromium) to scrape and normalize unstructured result data from university portals.
-* **Business Intelligence (BI) Dashboard:** Visualizes KPIs like Branch-wise Average CGPA, Pass/Fail Ratios, and Grade Distribution Curves using Chart.js.
-* **Digital Archival System:** A robust queue management system that processes multiple colleges/branches sequentially to generate and merge thousands of PDF transcripts.
-* **Enterprise Architecture:** Implements Asynchronous processing (`@Async`), atomic telemetry for live progress tracking, and fault-tolerant retry logic.
+---
 
+## 📦 Download Required Binaries
+Place these in your distribution folders before building the installers:
 
+### For Windows Build
+* **JRE 17 (Win x64):** [Download Adoptium](https://adoptium.net/temurin/releases/?os=windows&arch=x64&package=jre)
+* **Chromium (Win x64):** [Download Chromium](https://chromium.woolyss.com/download/)
 
-###  Tech Stack
-* **Backend:** Java Spring Boot (Web, Data JPA)
-* **Automation:** Microsoft Playwright
-* **Database:** PostgreSQL
-* **Frontend:** Thymeleaf, Bootstrap 5, JavaScript (Fetch API)
-* **Tools:** Apache PDFBox, Maven
-
-<hr>
+### For Linux Build
+* **JRE 17 (Linux x64):** [Download Adoptium](https://adoptium.net/temurin/releases/?os=linux&arch=x64&package=jre)
+* **Chromium (Linux x64):** [Download Chromium Linux](https://download-chromium.appspot.com/?platform=Linux_x64)
