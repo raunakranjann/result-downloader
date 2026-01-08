@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
  * Contains personal details and the Primary Key (Registration Number).
  */
 @Entity
+// Ensure NO schema="public" is present here
 @Table(name = "student_informations")
 @Data
 @NoArgsConstructor
@@ -25,13 +26,10 @@ public class StudentInformations {
     private String course;
     private String branch;
 
-    // ==========================================
-    // PARENT -> CHILD RELATIONSHIP
-    // ==========================================
-
     /**
      * Link to StudentGrade.
-     * "mappedBy" means StudentGrade owns the Foreign Key.
+     * In SQLite, this One-to-One relationship will be managed by Hibernate
+     * without needing complex PostgreSQL-specific schema constraints.
      */
     @OneToOne(mappedBy = "studentInformations", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @PrimaryKeyJoinColumn

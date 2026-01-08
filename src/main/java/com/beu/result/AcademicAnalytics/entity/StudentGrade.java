@@ -6,33 +6,28 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 @Entity
-@Table(name = "student_grades")
+@Table(name = "student_grades") // Ensure NO schema="public" here
 @Data
 @NoArgsConstructor
 public class StudentGrade {
 
     @Id
-    private Long id; // Will be same as StudentInformations ID
+    private Long id;
 
-    // ==========================================
-    // LINK TO PARENT (StudentInformations)
-    // ==========================================
     @OneToOne
-    @MapsId // Copies ID from StudentInformations
+    @MapsId
     @JoinColumn(name = "registration_number")
     @ToString.Exclude
     private StudentInformations studentInformations;
 
-    // ==========================================
-    // LINK TO CHILD (StudentBacklog)
-    // ==========================================
+    /**
+     * Link to Child (StudentBacklog).
+     * We need to make sure 'StudentBacklog' is also updated to remove 'public'.
+     */
     @OneToOne(mappedBy = "studentGrade", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @PrimaryKeyJoinColumn
     private StudentBacklog backlog;
 
-    // ==========================================
-    // DATA FIELDS
-    // ==========================================
     private String sem1;
     private String sem2;
     private String sem3;

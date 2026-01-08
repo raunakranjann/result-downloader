@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "result_links")
+@Table(name = "result_links") // No schema="public", perfect for local DB
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -17,7 +17,7 @@ public class ResultLink {
     private Long id;
 
     @Column(unique = true, nullable = false)
-    private String linkKey; // This is the "Key"
+    private String linkKey;
 
     @Column(nullable = false, length = 2048)
     private String urlTemplate;
@@ -26,11 +26,11 @@ public class ResultLink {
 
     private boolean isActive = true;
 
-    // --- CONSTRUCTOR FOR SEEDING DATA ---
+    // Seeding constructor
     public ResultLink(String linkKey, String urlTemplate, boolean isActive) {
         this.linkKey = linkKey;
         this.urlTemplate = urlTemplate;
-        this.description = linkKey; // Default description to Key
+        this.description = linkKey;
         this.isActive = isActive;
     }
 }

@@ -14,6 +14,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -21,7 +24,7 @@ import java.util.regex.Pattern;
 
 /**
  * Service responsible for the automated ingestion of academic records.
- * Updated: Implements "High Water Mark" logic for CGPA protection.
+ * Optimized for Standalone Deployment (Windows/Linux) without Docker.
  */
 @Service
 public class TranscriptGenerationService {
@@ -49,12 +52,7 @@ public class TranscriptGenerationService {
     @Async
     public void processResultRange(String linkKeyOrUrl, long startReg, long endReg) {
 
-        String urlPattern;
-        if (linkKeyOrUrl.startsWith("http")) {
-            urlPattern = linkKeyOrUrl;
-        } else {
-            urlPattern = sourceConfig.getUrl(linkKeyOrUrl);
-        }
+        String urlPattern = linkKeyOrUrl.startsWith("http") ? linkKeyOrUrl : sourceConfig.getUrl(linkKeyOrUrl);
 
         if (urlPattern == null) {
             LOG.error("Ingestion Aborted: Invalid Link Key or URL '{}'", linkKeyOrUrl);
@@ -65,84 +63,92 @@ public class TranscriptGenerationService {
         syncStatus.startJob(totalItems);
 
         try (Playwright playwright = Playwright.create()) {
-            Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
-            BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 720));
-            Page page = context.newPage();
+            // 1. Determine the correct path based on the OS
+            String os = System.getProperty("os.name").toLowerCase();
+            String appPath = System.getProperty("user.dir");
+            Path browserExecutable;
 
-            for (long regNo = startReg; regNo <= endReg; regNo++) {
+            if (os.contains("win")) {
+                browserExecutable = Paths.get(appPath, "browsers", "windows", "chrome-win", "chrome.exe");
+            } else {
+                browserExecutable = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
+            }
 
-                // --- CANCEL CHECK (Optional: Add here if you implement cancellation later) ---
-               /* if (syncStatus.isCancelRequested()) {
-                    LOG.warn("Ingestion Job Cancelled by Admin.");
-                    syncStatus.updateProgress("Job Cancelled.");
-                    break;
-                }*/
+            // 2. Configure launch options
+            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions().setHeadless(true);
 
-                String logMessage = "Ingesting: " + regNo;
-                try {
-                    String targetUrl = urlPattern.replace("{REG}", String.valueOf(regNo));
+            // 3. Fail-safe: Check if bundled browser exists
+            if (Files.exists(browserExecutable)) {
+                launchOptions.setExecutablePath(browserExecutable);
+                LOG.info("Using standalone bundled browser: {}", browserExecutable);
+            } else {
+                LOG.warn("Bundled browser not found at {}. Attempting system default.", browserExecutable);
+            }
 
-                    // 1. ROBUST NAVIGATION
-                    page.navigate(targetUrl, new Page.NavigateOptions()
-                            .setTimeout(60000)
-                            .setWaitUntil(WaitUntilState.NETWORKIDLE));
+            // 4. Launch the browser and context using try-with-resources to prevent ghost processes
+            try (Browser browser = playwright.chromium().launch(launchOptions);
+                 BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 720))) {
 
-                    // 2. CHECK DATA STATE
-                    PageStatus status = checkPageStatus(page);
+                Page page = context.newPage();
 
-                    if (status == PageStatus.READY) {
-                        // --- PROCEED (Data is Complete) ---
-                        boolean isLegacy = page.locator("#ContentPlaceHolder1_GridView3").count() > 0;
+                for (long regNo = startReg; regNo <= endReg; regNo++) {
+                    String logMessage = "Ingesting: " + regNo;
+                    try {
+                        String targetUrl = urlPattern.replace("{REG}", String.valueOf(regNo));
 
-                        // A. Extract Semester FIRST (Needed for Logic)
-                        String curSem = isLegacy ? extractSemesterLegacy(page) : extractSemesterModern(page);
+                        page.navigate(targetUrl, new Page.NavigateOptions()
+                                .setTimeout(60000)
+                                .setWaitUntil(WaitUntilState.NETWORKIDLE));
 
-                        // B. Parse Profile
-                        StudentInformations profile = isLegacy
-                                ? parseLegacyPortalProfile(page, regNo)
-                                : parseModernPortalProfile(page, regNo);
+                        PageStatus status = checkPageStatus(page);
 
-                        if (profile != null) {
-                            resultRepository.save(profile);
+                        if (status == PageStatus.READY) {
+                            boolean isLegacy = page.locator("#ContentPlaceHolder1_GridView3").count() > 0;
 
-                            // C. Parse Grades
-                            StudentGrade grades = isLegacy
-                                    ? parseLegacyPortalGrades(page, regNo)
-                                    : parseModernPortalGrades(page, regNo);
+                            String curSem = isLegacy ? extractSemesterLegacy(page) : extractSemesterModern(page);
 
-                            // D. Synchronize Grades with "High Water Mark" Logic
-                            if (grades != null) {
-                                synchronizeGrades(grades, regNo, curSem);
+                            StudentInformations profile = isLegacy
+                                    ? parseLegacyPortalProfile(page, regNo)
+                                    : parseModernPortalProfile(page, regNo);
+
+                            if (profile != null) {
+                                resultRepository.save(profile);
+
+                                StudentGrade grades = isLegacy
+                                        ? parseLegacyPortalGrades(page, regNo)
+                                        : parseModernPortalGrades(page, regNo);
+
+                                if (grades != null) {
+                                    synchronizeGrades(grades, regNo, curSem);
+                                }
+
+                                String remarks = isLegacy ? extractRemarksLegacy(page) : extractRemarksModern(page);
+                                if (curSem != null) synchronizeBacklogs(regNo, curSem, remarks);
+
+                                logMessage = "Indexed: " + profile.getStudentName();
+                                LOG.info(logMessage);
+                            } else {
+                                logMessage = "Skipped (Parse Error): " + regNo;
                             }
 
-                            // E. Synchronize Backlogs
-                            String remarks = isLegacy ? extractRemarksLegacy(page) : extractRemarksModern(page);
-                            if (curSem != null) synchronizeBacklogs(regNo, curSem, remarks);
-
-                            logMessage = "Indexed: " + profile.getStudentName();
-                            LOG.info(logMessage);
+                        } else if (status == PageStatus.NAME_EMPTY) {
+                            logMessage = "Skipped (Name Empty): " + regNo;
+                        } else if (status == PageStatus.NO_RECORD) {
+                            logMessage = "Skipped (No Record): " + regNo;
+                        } else if (status == PageStatus.EMPTY_TABLE) {
+                            logMessage = "Skipped (Empty Table): " + regNo;
                         } else {
-                            logMessage = "Skipped (Parse Error): " + regNo;
+                            logMessage = "Skipped (Unknown State): " + regNo;
                         }
 
-                    } else if (status == PageStatus.NAME_EMPTY) {
-                        logMessage = "Skipped (Name Empty): " + regNo;
-                    } else if (status == PageStatus.NO_RECORD) {
-                        logMessage = "Skipped (No Record): " + regNo;
-                    } else if (status == PageStatus.EMPTY_TABLE) {
-                        logMessage = "Skipped (Empty Table): " + regNo;
-                    } else {
-                        logMessage = "Skipped (Unknown State): " + regNo;
+                    } catch (Exception e) {
+                        logMessage = "Error: " + e.getMessage();
+                        LOG.error("Failed to ingest {}", regNo, e);
+                    } finally {
+                        syncStatus.updateProgress(logMessage);
                     }
-
-                } catch (Exception e) {
-                    logMessage = "Error: " + e.getMessage();
-                    LOG.error("Failed to ingest {}", regNo, e);
-                } finally {
-                    syncStatus.updateProgress(logMessage);
                 }
             }
-            browser.close();
         } catch (Exception e) {
             LOG.error("Critical Failure in Ingestion Engine", e);
         } finally {
@@ -161,8 +167,7 @@ public class TranscriptGenerationService {
             return PageStatus.NO_RECORD;
         }
 
-        Locator nameCell;
-        nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
+        Locator nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
         if (nameCell.count() == 0) {
             nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
         }
@@ -179,18 +184,14 @@ public class TranscriptGenerationService {
         Locator table = page.locator("table:has-text('Subject Code')").first();
         if (table.count() > 0) {
             int rows = table.locator("tr").count();
-            if (rows > 2) {
-                return PageStatus.READY;
-            } else {
-                return PageStatus.EMPTY_TABLE;
-            }
+            return (rows > 2) ? PageStatus.READY : PageStatus.EMPTY_TABLE;
         }
 
         return PageStatus.UNKNOWN;
     }
 
     // ==========================================
-    // PERSISTENCE LOGIC (UPDATED)
+    // PERSISTENCE LOGIC
     // ==========================================
 
     private void synchronizeGrades(StudentGrade newGrades, Long regNo, String incomingSem) {
@@ -199,9 +200,6 @@ public class TranscriptGenerationService {
 
         if (existingOpt.isPresent()) {
             target = existingOpt.get();
-
-            // 1. SGPA Logic: Always apply "New >= Old" check for every semester field
-            // This satisfies "Scenario B" automatically for SGPAs
             target.setSem1(resolveHigherScore(target.getSem1(), newGrades.getSem1()));
             target.setSem2(resolveHigherScore(target.getSem2(), newGrades.getSem2()));
             target.setSem3(resolveHigherScore(target.getSem3(), newGrades.getSem3()));
@@ -211,37 +209,35 @@ public class TranscriptGenerationService {
             target.setSem7(resolveHigherScore(target.getSem7(), newGrades.getSem7()));
             target.setSem8(resolveHigherScore(target.getSem8(), newGrades.getSem8()));
 
-            // 2. CGPA Logic: The "High Water Mark" Rule
-            // Determine max semester currently in DB
-            int dbMaxSem = 0;
-            if (target.getSem8() != null && !target.getSem8().equals("NA")) dbMaxSem = 8;
-            else if (target.getSem7() != null && !target.getSem7().equals("NA")) dbMaxSem = 7;
-            else if (target.getSem6() != null && !target.getSem6().equals("NA")) dbMaxSem = 6;
-            else if (target.getSem5() != null && !target.getSem5().equals("NA")) dbMaxSem = 5;
-            else if (target.getSem4() != null && !target.getSem4().equals("NA")) dbMaxSem = 4;
-            else if (target.getSem3() != null && !target.getSem3().equals("NA")) dbMaxSem = 3;
-            else if (target.getSem2() != null && !target.getSem2().equals("NA")) dbMaxSem = 2;
-            else if (target.getSem1() != null && !target.getSem1().equals("NA")) dbMaxSem = 1;
-
-            // Determine incoming semester index
+            int dbMaxSem = calculateMaxSem(target);
             int incomingSemIndex = getSemesterOrder(incomingSem);
 
-            // LOGIC: Only update CGPA if incoming sem is New (>) or Current Correction (==)
-            // If incoming is Old (<), we SKIP CGPA update.
             if (incomingSemIndex >= dbMaxSem) {
                 if (newGrades.getCgpa() != null && !newGrades.getCgpa().equals("NA")) {
                     target.setCgpa(newGrades.getCgpa());
                 }
             }
-
         } else {
-            // New Record: Save everything
             target = newGrades;
             StudentInformations parent = resultRepository.getReferenceById(regNo);
             target.setStudentInformations(parent);
         }
         gradeRepository.save(target);
     }
+
+    private int calculateMaxSem(StudentGrade g) {
+        if (isVal(g.getSem8())) return 8;
+        if (isVal(g.getSem7())) return 7;
+        if (isVal(g.getSem6())) return 6;
+        if (isVal(g.getSem5())) return 5;
+        if (isVal(g.getSem4())) return 4;
+        if (isVal(g.getSem3())) return 3;
+        if (isVal(g.getSem2())) return 2;
+        if (isVal(g.getSem1())) return 1;
+        return 0;
+    }
+
+    private boolean isVal(String s) { return s != null && !s.equals("NA"); }
 
     private void synchronizeBacklogs(Long regNo, String semester, String remarks) {
         String valueToSave = (remarks == null || remarks.isEmpty()) ? "PASS" : remarks;
@@ -250,7 +246,7 @@ public class TranscriptGenerationService {
         Optional<StudentBacklog> existingOpt = backlogRepository.findById(regNo);
         StudentBacklog backlog = existingOpt.orElse(new StudentBacklog());
 
-        if (!existingOpt.isPresent()) {
+        if (existingOpt.isEmpty()) {
             StudentGrade parentGrade = gradeRepository.getReferenceById(regNo);
             backlog.setStudentGrade(parentGrade);
         }
@@ -276,11 +272,9 @@ public class TranscriptGenerationService {
         try {
             String name = page.locator("tr:has-text('Student Name') >> td").nth(1).innerText().trim();
             if (name.isEmpty()) return null;
-
             String father = page.locator("tr:has-text('Father') >> td").nth(1).innerText().trim();
-            String mother = "";
             Locator motherCell = page.locator("tr:has-text('Mother') >> td").nth(1);
-            mother = motherCell.count() > 0 ? motherCell.innerText().trim() : page.locator("tr:has-text('Father') >> td").nth(3).innerText().trim();
+            String mother = motherCell.count() > 0 ? motherCell.innerText().trim() : page.locator("tr:has-text('Father') >> td").nth(3).innerText().trim();
             String branch = page.locator("tr:has-text('Course Name') >> td").nth(1).innerText().replaceAll("^\\d+\\s*-\\s*", "").trim();
             return new StudentInformations(regNo, name, father, mother, "B.Tech", branch);
         } catch (Exception e) { return null; }
@@ -338,26 +332,17 @@ public class TranscriptGenerationService {
 
     private String extractRemarksModern(Page page) {
         try {
-            Locator failSpan = page.locator("span.text-danger:has-text('FAIL')").first();
-            if (failSpan.count() > 0) {
-                return failSpan.innerText().trim();
-            }
-            Locator absentSpan = page.locator("span.text-danger:has-text('ABSENT')").first();
-            if (absentSpan.count() > 0) {
-                return "ABSENT";
-            }
+            if (page.locator("span.text-danger:has-text('FAIL')").count() > 0) return "FAIL";
+            if (page.locator("span.text-danger:has-text('ABSENT')").count() > 0) return "ABSENT";
             return "PASS";
-        } catch (Exception e) {
-            return "PASS";
-        }
+        } catch (Exception e) { return "PASS"; }
     }
 
     private String extractSemesterLegacy(Page page) {
         try {
             Locator semLoc = page.locator("#ContentPlaceHolder1_DataList2_Exam_Name_0");
-            if (semLoc.count() > 0) return semLoc.innerText().trim();
-        } catch (Exception e) {}
-        return null;
+            return (semLoc.count() > 0) ? semLoc.innerText().trim() : null;
+        } catch (Exception e) { return null; }
     }
 
     private String extractRemarksLegacy(Page page) {
@@ -375,7 +360,7 @@ public class TranscriptGenerationService {
         if (newVal == null || newVal.equals("NA") || newVal.equals("-")) return oldVal;
         if (oldVal == null || oldVal.equals("NA") || oldVal.equals("-")) return newVal;
         try { return (Double.parseDouble(newVal) >= Double.parseDouble(oldVal)) ? newVal : oldVal; }
-        catch (NumberFormatException e) { return newVal; }
+        catch (Exception e) { return newVal; }
     }
 
     private String normalize(List<String> cells, int index) {
@@ -392,16 +377,16 @@ public class TranscriptGenerationService {
 
     private int getSemesterOrder(String sem) {
         if (sem == null) return 0;
-        switch (sem.trim().toUpperCase()) {
-            case "I": case "1": return 1;
-            case "II": case "2": return 2;
-            case "III": case "3": return 3;
-            case "IV": case "4": return 4;
-            case "V": case "5": return 5;
-            case "VI": case "6": return 6;
-            case "VII": case "7": return 7;
-            case "VIII": case "8": return 8;
-            default: return 0;
-        }
+        return switch (sem.trim().toUpperCase()) {
+            case "I", "1" -> 1;
+            case "II", "2" -> 2;
+            case "III", "3" -> 3;
+            case "IV", "4" -> 4;
+            case "V", "5" -> 5;
+            case "VI", "6" -> 6;
+            case "VII", "7" -> 7;
+            case "VIII", "8" -> 8;
+            default -> 0;
+        };
     }
 }

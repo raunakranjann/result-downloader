@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -51,22 +52,38 @@ public class CertificateGenerationService {
         if (!outputDir.exists()) outputDir.mkdirs();
 
         try (Playwright playwright = Playwright.create()) {
-            Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
-            BrowserContext context = browser.newContext(new Browser.NewContextOptions()
-                    .setViewportSize(1280, 1024));
+            // --- STANDALONE BROWSER CONFIGURATION ---
+            String os = System.getProperty("os.name").toLowerCase();
+            String appPath = System.getProperty("user.dir");
+            Path browserExecutable;
 
-            Page page = context.newPage();
-
-            for (long currentReg = startReg; currentReg <= endReg; currentReg++) {
-                processSingleRecord(page, urlTemplate, currentReg, outputDir.getAbsolutePath());
+            if (os.contains("win")) {
+                browserExecutable = Paths.get(appPath, "browsers", "windows", "chrome-win", "chrome.exe");
+            } else {
+                browserExecutable = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
             }
 
-            context.close();
-            browser.close();
+            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions().setHeadless(true);
 
-            String mergedFileName = "Merged_Transcript_" + safeBatchName + ".pdf";
-            LOG.info("Initiating Merge Sequence inside folder: {}", outputDir.getName());
-            mergePdfArtifacts(outputDir.getAbsolutePath(), mergedFileName);
+            // Apply executable path if bundled version is found
+            if (Files.exists(browserExecutable)) {
+                launchOptions.setExecutablePath(browserExecutable);
+                LOG.info("Archival Engine using bundled browser: {}", browserExecutable);
+            }
+
+            try (Browser browser = playwright.chromium().launch(launchOptions);
+                 BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 1024))) {
+
+                Page page = context.newPage();
+
+                for (long currentReg = startReg; currentReg <= endReg; currentReg++) {
+                    processSingleRecord(page, urlTemplate, currentReg, outputDir.getAbsolutePath());
+                }
+
+                String mergedFileName = "Merged_Transcript_" + safeBatchName + ".pdf";
+                LOG.info("Initiating Merge Sequence inside folder: {}", outputDir.getName());
+                mergePdfArtifacts(outputDir.getAbsolutePath(), mergedFileName);
+            }
 
         } catch (Exception e) {
             LOG.error("Critical Failure in Archival Engine", e);
@@ -81,10 +98,6 @@ public class CertificateGenerationService {
         try {
             String targetUrl = urlTemplate.replace("{REG}", String.valueOf(regNo));
 
-
-
-
-
             page.navigate(targetUrl, new Page.NavigateOptions()
                     .setTimeout(45000)
                     .setWaitUntil(WaitUntilState.NETWORKIDLE));
@@ -92,13 +105,9 @@ public class CertificateGenerationService {
             PageStatus status = waitForDataCompleteness(page);
 
             if (status == PageStatus.READY) {
-
-
-                // --- STABILITY CHECK: Wait for Legacy Assets to settle ---
                 if (page.locator("#container").count() > 0 && page.locator("app-root").count() == 0) {
-                    page.waitForTimeout(500); // 500ms safety delay for Legacy sites
+                    page.waitForTimeout(500);
                 }
-                // --- NEW: UI CLEANUP ONLY FOR LEGACY PORTAL ---
                 cleanLegacyUI(page);
 
                 Path pdfPath = Paths.get(outputDir, regNo + ".pdf");
@@ -124,14 +133,8 @@ public class CertificateGenerationService {
         telemetry.updateStatus(statusMessage);
     }
 
-    // ==========================================
-    // UI CLEANUP LOGIC (CENTERS LEGACY ONLY)
-    // ==========================================
-
-
     private void cleanLegacyUI(Page page) {
         try {
-            // Use a single formatted string to avoid concatenation errors
             String script = """
             () => {
                 const legacyContainer = document.querySelector('#container');
@@ -141,7 +144,6 @@ public class CertificateGenerationService {
                     const content = legacyContainer.cloneNode(true);
                     document.body.innerHTML = '';
                     
-                    // Center content and fix overflow
                     document.body.style.display = 'flex';
                     document.body.style.flexDirection = 'column';
                     document.body.style.alignItems = 'center';
@@ -166,11 +168,6 @@ public class CertificateGenerationService {
         }
     }
 
-
-    // ==========================================
-    // DATA COMPLETENESS LOGIC
-    // ==========================================
-
     private enum PageStatus { READY, EMPTY, NAME_EMPTY, NO_RECORD, LOADING }
 
     private PageStatus waitForDataCompleteness(Page page) {
@@ -183,40 +180,22 @@ public class CertificateGenerationService {
                     return PageStatus.NO_RECORD;
                 }
 
-                // 2. Detect Portal Type via DOM
-                boolean isModern = page.locator("app-root").count() > 0;
-
-
                 Locator table = page.locator("table:has-text('Subject Code')").first();
-                boolean tableHasData = false;
-                if (table.count() > 0) {
-                    if (table.locator("tr").count() > 2) {
-                        tableHasData = true;
-                    } else {
-                        return PageStatus.EMPTY;
-                    }
-                }
+                boolean tableHasData = table.count() > 0 && table.locator("tr").count() > 2;
+                if (table.count() > 0 && !tableHasData) return PageStatus.EMPTY;
 
                 boolean nameExists = false;
                 Locator nameCell = page.locator("tr:has-text('Student Name') >> td").nth(1);
-                if (nameCell.count() == 0) {
-                    nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
-                }
+                if (nameCell.count() == 0) nameCell = page.locator("#ContentPlaceHolder1_DataList1_StudentNameLabel_0");
 
                 if (nameCell.count() > 0) {
                     String nameText = nameCell.innerText().trim();
-                    if (!nameText.isEmpty() && !nameText.equals("&nbsp;")) {
-                        nameExists = true;
-                    } else {
-                        return PageStatus.NAME_EMPTY;
-                    }
+                    if (!nameText.isEmpty() && !nameText.equals("&nbsp;")) nameExists = true;
+                    else return PageStatus.NAME_EMPTY;
                 }
 
-                if (nameExists && tableHasData) {
-                    return PageStatus.READY;
-                } else {
-                    Thread.sleep(500);
-                }
+                if (nameExists && tableHasData) return PageStatus.READY;
+                Thread.sleep(500);
             } catch (Exception e) {
                 try { Thread.sleep(500); } catch (InterruptedException ignored) {}
             }
@@ -224,33 +203,11 @@ public class CertificateGenerationService {
         return PageStatus.LOADING;
     }
 
-    // ==========================================
-    // PDF UTILITIES
-    // ==========================================
-
     private void printDynamicPdf(Page page, Path pdfPath) {
-        Object dimensions = page.evaluate("() => { " +
-                "  const body = document.body;" +
-                "  const html = document.documentElement;" +
-                "  return {" +
-                "    width: Math.max(body.scrollWidth, body.offsetWidth, html.clientWidth) + 'px'," +
-                "    height: Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight) + 'px'" +
-                "  };" +
-                "}");
-
-        @SuppressWarnings("unchecked")
+        Object dimensions = page.evaluate("() => ({ width: Math.max(document.body.scrollWidth, document.documentElement.clientWidth) + 'px', height: Math.max(document.body.scrollHeight, document.documentElement.clientHeight) + 'px' })");
         Map<String, String> dimMap = (Map<String, String>) dimensions;
-
-        page.addStyleTag(new Page.AddStyleTagOptions().setContent(
-                "@media print { body { margin: 0; padding: 10px; } @page { margin: 0; } }"
-        ));
-
-        page.pdf(new Page.PdfOptions()
-                .setPath(pdfPath)
-                .setWidth(dimMap.get("width"))
-                .setHeight(dimMap.get("height"))
-                .setPrintBackground(true)
-        );
+        page.addStyleTag(new Page.AddStyleTagOptions().setContent("@media print { body { margin: 0; padding: 10px; } @page { margin: 0; } }"));
+        page.pdf(new Page.PdfOptions().setPath(pdfPath).setWidth(dimMap.get("width")).setHeight(dimMap.get("height")).setPrintBackground(true));
     }
 
     private void mergePdfArtifacts(String folderPath, String outputFileName) {
@@ -258,9 +215,7 @@ public class CertificateGenerationService {
             PDFMergerUtility pdfMerger = new PDFMergerUtility();
             pdfMerger.setDestinationFileName(folderPath + File.separator + outputFileName);
             File folder = new File(folderPath);
-            File[] files = folder.listFiles((dir, name) ->
-                    name.endsWith(".pdf") && !name.equalsIgnoreCase(outputFileName) && !name.startsWith("ERROR_"));
-
+            File[] files = folder.listFiles((dir, name) -> name.endsWith(".pdf") && !name.equalsIgnoreCase(outputFileName) && !name.startsWith("ERROR_"));
             if (files != null && files.length > 0) {
                 Arrays.sort(files, Comparator.comparing(File::getName));
                 for (File file : files) pdfMerger.addSource(file);

@@ -33,3 +33,7 @@ build/
 .vscode/
 
 Data/
+
+academic_data.db
+browsers/linux
+browsers/windows

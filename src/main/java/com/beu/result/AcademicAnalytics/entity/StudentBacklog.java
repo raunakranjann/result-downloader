@@ -6,26 +6,20 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 @Entity
-@Table(name = "student_backlogs")
+@Table(name = "student_backlogs") // No schema="public", perfect for SQLite
 @Data
 @NoArgsConstructor
 public class StudentBacklog {
 
     @Id
-    private Long id; // Will be same as StudentGrade ID
+    private Long id;
 
-    // ==========================================
-    // LINK TO PARENT (StudentGrade)
-    // ==========================================
     @OneToOne
-    @MapsId // Copies ID from StudentGrade
+    @MapsId
     @JoinColumn(name = "registration_number")
     @ToString.Exclude
     private StudentGrade studentGrade;
 
-    // ==========================================
-    // DATA FIELDS
-    // ==========================================
     private String sem1;
     private String sem2;
     private String sem3;
