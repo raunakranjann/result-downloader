@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+# 1. Fix Permissions for the Application Folder
+# We grant full access so the app can create 'academic_data.db' without a 500 error
+chmod -R 777 /opt/academic-analytics/
+
+# 2. Set execute permissions for the bundled Linux JRE
+# Ensure this points to the extensionless 'java' binary you just added
+chmod +x /opt/academic-analytics/jre/bin/java
+
+# 3. Set execute permissions for the bundled Chromium
+chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome
+
+# 4. Set execute permissions for your launch script
+chmod +x /opt/academic-analytics/start_app.sh
+
+# 5. Force update the icon and desktop database
+# This ensures the icon from Icon.png shows up in the menu immediately
+update-desktop-database /usr/share/applications
+gtk-update-icon-cache /usr/share/icons/hicolor || true
+
+echo "Academic Analytics installed successfully."
+exit 0

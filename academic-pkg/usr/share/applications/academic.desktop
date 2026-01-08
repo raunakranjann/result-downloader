@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Academic Analytics
+Comment=Download and Archive Academic Results
+Exec=/usr/bin/bash /opt/academic-analytics/start_app.sh
+Icon=/opt/academic-analytics/Icon.png
+Terminal=false
+Type=Application
+Categories=Education;Utility;

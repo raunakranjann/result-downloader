@@ -1,0 +1,9 @@
+Package: academic-analytics
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Raunak Ranjan <raunakranjann@gmail.com>
+Description: Standalone Academic Result Downloader and Archival System.
+ Includes bundled JRE and Chromium for a single-install experience.
+ 

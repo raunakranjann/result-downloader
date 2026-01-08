@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+# 1. Kill any running instances of the app before removal
+# We use pkill to target the specific JAR name
+pkill -f "beu-bulk-result-downlaoder" || true
+
+echo "Preparing to remove Academic Analytics..."
+exit 0
