@@ -1,8 +1,9 @@
 ### 📥 Download & Install
 
-[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="250">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/AcademicAnalytics.exe)
+[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="230">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/AcademicAnalytics.exe)
+[<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="200">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
 
-[<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="250">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
+---
 
 *Current Version: v1.0.0*
 
