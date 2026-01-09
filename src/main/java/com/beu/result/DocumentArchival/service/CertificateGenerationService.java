@@ -20,6 +20,10 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Map;
 
+/**
+ * Service responsible for PDF certificate generation and archival.
+ * Optimized for Standalone Linux/Debian Deployment.
+ */
 @Service
 public class CertificateGenerationService {
 
@@ -51,24 +55,29 @@ public class CertificateGenerationService {
         File outputDir = Paths.get(jobRequest.getStorageLocation(), safeBatchName).toFile();
         if (!outputDir.exists()) outputDir.mkdirs();
 
+        // 1. Initialize Playwright with strict Linux/Debian configuration
         try (Playwright playwright = Playwright.create()) {
-            // --- STANDALONE BROWSER CONFIGURATION ---
-            String os = System.getProperty("os.name").toLowerCase();
+
+            // Define Linux bundled path
             String appPath = System.getProperty("user.dir");
-            Path browserExecutable;
+            Path bundledPath = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
 
-            if (os.contains("win")) {
-                browserExecutable = Paths.get(appPath, "browsers", "windows", "chrome-win", "chrome.exe");
+            // 2. Configure Linux-specific launch options to prevent SIGTRAP crashes
+            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
+                    .setHeadless(true)
+                    .setArgs(Arrays.asList(
+                            "--no-sandbox",              // Required for execution in /opt
+                            "--disable-setuid-sandbox",  // Fixes SIGTRAP fatal error
+                            "--disable-dev-shm-usage",   // Prevents shared memory crashes
+                            "--disable-gpu"              // Optimizes resource usage
+                    ));
+
+            // 3. Tiered Browser Resolution (Bundled -> System -> Download)
+            if (Files.exists(bundledPath)) {
+                launchOptions.setExecutablePath(bundledPath);
+                LOG.info("Archival Engine: Using bundled browser at {}", bundledPath);
             } else {
-                browserExecutable = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
-            }
-
-            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions().setHeadless(true);
-
-            // Apply executable path if bundled version is found
-            if (Files.exists(browserExecutable)) {
-                launchOptions.setExecutablePath(browserExecutable);
-                LOG.info("Archival Engine using bundled browser: {}", browserExecutable);
+                LOG.warn("Bundled browser NOT found at {}. Attempting system default/download.", bundledPath);
             }
 
             try (Browser browser = playwright.chromium().launch(launchOptions);
@@ -105,6 +114,7 @@ public class CertificateGenerationService {
             PageStatus status = waitForDataCompleteness(page);
 
             if (status == PageStatus.READY) {
+                // Ensure specific rendering delay for Angular/Legacy hybrid apps
                 if (page.locator("#container").count() > 0 && page.locator("app-root").count() == 0) {
                     page.waitForTimeout(500);
                 }
@@ -115,15 +125,11 @@ public class CertificateGenerationService {
 
                 LOG.info("[Record {}] Archived Successfully.", regNo);
                 statusMessage = "Archived: " + regNo;
-            } else if (status == PageStatus.NO_RECORD) {
-                statusMessage = "Skipped (No Record): " + regNo;
-            } else if (status == PageStatus.EMPTY) {
-                statusMessage = "Skipped (Empty Table): " + regNo;
-            } else if (status == PageStatus.NAME_EMPTY) {
-                statusMessage = "Skipped (Name Empty): " + regNo;
             } else {
-                captureErrorState(page, outputDir, regNo);
-                statusMessage = "Failed (Timeout): " + regNo;
+                if (status != PageStatus.NO_RECORD && status != PageStatus.EMPTY) {
+                    captureErrorState(page, outputDir, regNo);
+                }
+                statusMessage = "Skipped (" + status + "): " + regNo;
             }
         } catch (Exception e) {
             LOG.error("[Record {}] Error: {}", regNo, e.getMessage());
@@ -151,14 +157,11 @@ public class CertificateGenerationService {
                     document.body.style.margin = '0';
                     document.body.style.padding = '10px';
                     document.body.style.height = 'auto';
-                    document.body.style.minHeight = '0';
-                    document.body.style.overflow = 'hidden';
-
                     document.body.appendChild(content);
+
                     content.style.position = 'static';
                     content.style.margin = '0 auto';
                     content.style.float = 'none';
-                    content.style.height = 'auto';
                 }
             }
             """;
@@ -204,8 +207,13 @@ public class CertificateGenerationService {
     }
 
     private void printDynamicPdf(Page page, Path pdfPath) {
-        Object dimensions = page.evaluate("() => ({ width: Math.max(document.body.scrollWidth, document.documentElement.clientWidth) + 'px', height: Math.max(document.body.scrollHeight, document.documentElement.clientHeight) + 'px' })");
-        Map<String, String> dimMap = (Map<String, String>) dimensions;
+        @SuppressWarnings("unchecked")
+        Map<String, String> dimMap = (Map<String, String>) page.evaluate("""
+            () => ({ 
+                width: Math.max(document.body.scrollWidth, document.documentElement.clientWidth) + 'px', 
+                height: Math.max(document.body.scrollHeight, document.documentElement.clientHeight) + 'px' 
+            })
+        """);
         page.addStyleTag(new Page.AddStyleTagOptions().setContent("@media print { body { margin: 0; padding: 10px; } @page { margin: 0; } }"));
         page.pdf(new Page.PdfOptions().setPath(pdfPath).setWidth(dimMap.get("width")).setHeight(dimMap.get("height")).setPrintBackground(true));
     }

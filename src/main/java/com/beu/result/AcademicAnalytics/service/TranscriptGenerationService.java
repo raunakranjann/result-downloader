@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -24,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * Service responsible for the automated ingestion of academic records.
- * Optimized for Standalone Deployment (Windows/Linux) without Docker.
+ * Optimized for Standalone Linux/Debian Deployment.
  */
 @Service
 public class TranscriptGenerationService {
@@ -62,30 +63,33 @@ public class TranscriptGenerationService {
         int totalItems = (int) (endReg - startReg + 1);
         syncStatus.startJob(totalItems);
 
+        // Fix: Ensure Playwright and Browser are wrapped in try-with-resources to prevent ghost processes
         try (Playwright playwright = Playwright.create()) {
-            // 1. Determine the correct path based on the OS
-            String os = System.getProperty("os.name").toLowerCase();
+
+            // 1. Setup Linux-Specific Pathing
             String appPath = System.getProperty("user.dir");
-            Path browserExecutable;
+            Path bundledPath = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
 
-            if (os.contains("win")) {
-                browserExecutable = Paths.get(appPath, "browsers", "windows", "chrome-win", "chrome.exe");
+            // 2. Configure Essential Linux Flags
+            // These flags prevent the SIGTRAP crash on Ubuntu/Debian
+            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
+                    .setHeadless(true)
+                    .setArgs(Arrays.asList(
+                            "--no-sandbox",              // Required for /opt/ or root execution
+                            "--disable-setuid-sandbox",  // Prevents fatal SIGTRAP errors
+                            "--disable-dev-shm-usage",   // Prevents memory crashes
+                            "--disable-gpu"              // Optimizes resource usage
+                    ));
+
+            // 3. Tiered Browser Resolution (Bundled -> System -> Download)
+            if (Files.exists(bundledPath)) {
+                launchOptions.setExecutablePath(bundledPath);
+                LOG.info("Linux Engine: Using bundled browser at {}", bundledPath);
             } else {
-                browserExecutable = Paths.get(appPath, "browsers", "linux", "chrome-linux", "chrome");
+                LOG.warn("Bundled browser NOT found at {}. Attempting system default/download.", bundledPath);
             }
 
-            // 2. Configure launch options
-            BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions().setHeadless(true);
-
-            // 3. Fail-safe: Check if bundled browser exists
-            if (Files.exists(browserExecutable)) {
-                launchOptions.setExecutablePath(browserExecutable);
-                LOG.info("Using standalone bundled browser: {}", browserExecutable);
-            } else {
-                LOG.warn("Bundled browser not found at {}. Attempting system default.", browserExecutable);
-            }
-
-            // 4. Launch the browser and context using try-with-resources to prevent ghost processes
+            // 4. Launch Browser and Context
             try (Browser browser = playwright.chromium().launch(launchOptions);
                  BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 720))) {
 
@@ -104,7 +108,6 @@ public class TranscriptGenerationService {
 
                         if (status == PageStatus.READY) {
                             boolean isLegacy = page.locator("#ContentPlaceHolder1_GridView3").count() > 0;
-
                             String curSem = isLegacy ? extractSemesterLegacy(page) : extractSemesterModern(page);
 
                             StudentInformations profile = isLegacy
@@ -113,7 +116,6 @@ public class TranscriptGenerationService {
 
                             if (profile != null) {
                                 resultRepository.save(profile);
-
                                 StudentGrade grades = isLegacy
                                         ? parseLegacyPortalGrades(page, regNo)
                                         : parseModernPortalGrades(page, regNo);
@@ -130,15 +132,8 @@ public class TranscriptGenerationService {
                             } else {
                                 logMessage = "Skipped (Parse Error): " + regNo;
                             }
-
-                        } else if (status == PageStatus.NAME_EMPTY) {
-                            logMessage = "Skipped (Name Empty): " + regNo;
-                        } else if (status == PageStatus.NO_RECORD) {
-                            logMessage = "Skipped (No Record): " + regNo;
-                        } else if (status == PageStatus.EMPTY_TABLE) {
-                            logMessage = "Skipped (Empty Table): " + regNo;
                         } else {
-                            logMessage = "Skipped (Unknown State): " + regNo;
+                            logMessage = "Skipped (" + status + "): " + regNo;
                         }
 
                     } catch (Exception e) {
@@ -157,7 +152,7 @@ public class TranscriptGenerationService {
     }
 
     // ==========================================
-    // DATA VALIDATION LOGIC
+    // DATA VALIDATION & PERSISTENCE
     // ==========================================
 
     private enum PageStatus { READY, EMPTY_TABLE, NAME_EMPTY, NO_RECORD, UNKNOWN }
@@ -186,13 +181,8 @@ public class TranscriptGenerationService {
             int rows = table.locator("tr").count();
             return (rows > 2) ? PageStatus.READY : PageStatus.EMPTY_TABLE;
         }
-
         return PageStatus.UNKNOWN;
     }
-
-    // ==========================================
-    // PERSISTENCE LOGIC
-    // ==========================================
 
     private void synchronizeGrades(StudentGrade newGrades, Long regNo, String incomingSem) {
         Optional<StudentGrade> existingOpt = gradeRepository.findById(regNo);
@@ -212,15 +202,12 @@ public class TranscriptGenerationService {
             int dbMaxSem = calculateMaxSem(target);
             int incomingSemIndex = getSemesterOrder(incomingSem);
 
-            if (incomingSemIndex >= dbMaxSem) {
-                if (newGrades.getCgpa() != null && !newGrades.getCgpa().equals("NA")) {
-                    target.setCgpa(newGrades.getCgpa());
-                }
+            if (incomingSemIndex >= dbMaxSem && newGrades.getCgpa() != null && !newGrades.getCgpa().equals("NA")) {
+                target.setCgpa(newGrades.getCgpa());
             }
         } else {
             target = newGrades;
-            StudentInformations parent = resultRepository.getReferenceById(regNo);
-            target.setStudentInformations(parent);
+            target.setStudentInformations(resultRepository.getReferenceById(regNo));
         }
         gradeRepository.save(target);
     }
@@ -247,8 +234,7 @@ public class TranscriptGenerationService {
         StudentBacklog backlog = existingOpt.orElse(new StudentBacklog());
 
         if (existingOpt.isEmpty()) {
-            StudentGrade parentGrade = gradeRepository.getReferenceById(regNo);
-            backlog.setStudentGrade(parentGrade);
+            backlog.setStudentGrade(gradeRepository.getReferenceById(regNo));
         }
 
         switch (semClean) {
@@ -265,7 +251,7 @@ public class TranscriptGenerationService {
     }
 
     // ==========================================
-    // PARSING HELPERS
+    // PARSING HELPERS & UTILITIES
     // ==========================================
 
     private StudentInformations parseModernPortalProfile(Page page, long regNo) {
@@ -352,10 +338,6 @@ public class TranscriptGenerationService {
         } catch (Exception e) { return "PASS"; }
     }
 
-    // ==========================================
-    // UTILITIES
-    // ==========================================
-
     private String resolveHigherScore(String oldVal, String newVal) {
         if (newVal == null || newVal.equals("NA") || newVal.equals("-")) return oldVal;
         if (oldVal == null || oldVal.equals("NA") || oldVal.equals("-")) return newVal;
@@ -378,15 +360,9 @@ public class TranscriptGenerationService {
     private int getSemesterOrder(String sem) {
         if (sem == null) return 0;
         return switch (sem.trim().toUpperCase()) {
-            case "I", "1" -> 1;
-            case "II", "2" -> 2;
-            case "III", "3" -> 3;
-            case "IV", "4" -> 4;
-            case "V", "5" -> 5;
-            case "VI", "6" -> 6;
-            case "VII", "7" -> 7;
-            case "VIII", "8" -> 8;
-            default -> 0;
+            case "I", "1" -> 1; case "II", "2" -> 2; case "III", "3" -> 3;
+            case "IV", "4" -> 4; case "V", "5" -> 5; case "VI", "6" -> 6;
+            case "VII", "7" -> 7; case "VIII", "8" -> 8; default -> 0;
         };
     }
 }
