@@ -1,0 +1,13 @@
+#Replace chrome 32 bit ... in this folder
+
+/AcademicAnalytics-Win/browsers/windows/chrome-win
+
+#Replace win 32 bit ... jre 8 in this folder
+
+/AcademicAnalytics-Win/jre
+
+
+
+#Replace and rename the jar file here 
+
+/AcademicAnalytics-Win/mainapplication.jar

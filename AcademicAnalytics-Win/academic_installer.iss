@@ -13,21 +13,21 @@ PrivilegesRequired=admin
 UninstallDisplayIcon={app}\icon.ico
 
 [Files]
-; Copy the JAR file
+; --- ADDED LAUNCH.VBS HERE ---
+Source: "launch.vbs"; DestDir: "{app}"; Flags: ignoreversion
+; -----------------------------
 Source: "mainapplication.jar"; DestDir: "{app}"; Flags: ignoreversion
-; Copy the Windows JRE folder
 Source: "jre\*"; DestDir: "{app}\jre"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Copy the Playwright browsers
 Source: "browsers\*"; DestDir: "{app}\browsers"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Copy the launcher
 Source: "start_app.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Academic Analytics"; Filename: "{app}\launch.vbs"; IconFilename: "{app}\icon.ico"
-Name: "{autodesktop}\Academic Analytics"; Filename: "{app}\launch.vbs"; IconFilename: "{app}\icon.ico"
-
-; The new Uninstall shortcut
+; Shortcuts now point to launch.vbs for a silent startup
+Name: "{group}\Academic Analytics"; Filename: "{app}\launch.vbs"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\Academic Analytics"; Filename: "{app}\launch.vbs"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
 Name: "{group}\Uninstall Academic Analytics"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\start_app.bat"; Description: "Launch Academic Analytics"; Flags: nowait postinstall skipifsilent
+; Launch via launch.vbs so the black console window doesn't appear after installation
+Filename: "wscript.exe"; Parameters: """{app}\launch.vbs"""; Description: "Launch Academic Analytics"; Flags: nowait postinstall skipifsilent
