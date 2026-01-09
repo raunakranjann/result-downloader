@@ -1,11 +1,14 @@
+# 📥 Download Standalone App
+[<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="200">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
 
+*Current Version: v1.0.0*
 
-```
-# 📂 Academic Analytics (Source)
+<hr>
+
+## 📂 Academic Analytics (Source-Code)
 
 Source code for the Linux standalone academic archival system.
 
----
 
 ## 🏗 Build & Setup
 
