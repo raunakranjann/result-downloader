@@ -2,8 +2,13 @@
 set -e
 
 # 1. Kill any running instances of the app before removal
-# We use pkill to target the specific JAR name
-pkill -f "beu-bulk-result-downlaoder" || true
+# We use pkill -f to match the specific JAR name in the full command line
+# || true ensures the script continues even if no process is found
+echo "Stopping Academic Analytics..."
+pkill -f "mainapplication.jar" || true
+
+# 2. Wait a moment for the process to release file locks
+sleep 2
 
 echo "Preparing to remove Academic Analytics..."
 exit 0

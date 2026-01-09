@@ -1,24 +1,33 @@
 #!/bin/bash
 set -e
 
-# 1. Fix Permissions for the Application Folder
-# We grant full access so the app can create 'academic_data.db' without a 500 error
-chmod -R 777 /opt/academic-analytics/
+# 1. Secure Permissions for the Application Folder
+# We no longer need 777 because data is now stored in the User's Home folder.
+# We set standard read/execute permissions for the binaries.
+chmod -R 755 /opt/academic-analytics/
 
 # 2. Set execute permissions for the bundled Linux JRE
-# Ensure this points to the extensionless 'java' binary you just added
+# This is required to allow the shell to launch the Java process.
 chmod +x /opt/academic-analytics/jre/bin/java
 
 # 3. Set execute permissions for the bundled Chromium
-chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome
+# Required for the standalone applet UI.
+if [ -d "/opt/academic-analytics/browsers/linux/chrome-linux" ]; then
+    chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome
+fi
 
 # 4. Set execute permissions for your launch script
 chmod +x /opt/academic-analytics/start_app.sh
 
 # 5. Force update the icon and desktop database
-# This ensures the icon from Icon.png shows up in the menu immediately
-update-desktop-database /usr/share/applications
-gtk-update-icon-cache /usr/share/icons/hicolor || true
+# This ensures your .desktop file and icon appear in the Application Menu immediately.
+if [ -d "/usr/share/applications" ]; then
+    update-desktop-database /usr/share/applications || true
+fi
 
-echo "Academic Analytics installed successfully."
+if [ -d "/usr/share/icons/hicolor" ]; then
+    gtk-update-icon-cache /usr/share/icons/hicolor || true
+fi
+
+echo "Academic Analytics environment configured successfully."
 exit 0
