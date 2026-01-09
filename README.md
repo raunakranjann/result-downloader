@@ -1,105 +1,75 @@
-### 📥 Download & Install
 
-[<img src="https://img.shields.io/badge/Download-Windows_Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" width="230">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/AcademicAnalytics.exe)
+# 📂 Academic Analytics (Standalone Linux)
+
+Source code for a local-first academic data management and archival system. This application is optimized for **Debian/Ubuntu** environments and features a bundled JRE and Chromium engine for a zero-dependency, standalone experience.
+
+## 📥 Download Standalone App
 [<img src="https://img.shields.io/badge/Download-Linux_DEB-FCC624?style=for-the-badge&logo=linux&logoColor=black" width="200">](https://github.com/raunakranjann/Academic-Analytics_and_Archival-System/releases/download/v1.0.0/academic-pkg.deb)
-
----
 
 *Current Version: v1.0.0*
 
+---
 
-
-
-
-
-
-
-
-
-
-
-
-
-# 🏗 Academic Analytics: Build & Distribution Recipe
-
-This document provides instructions for reconstructing the build environment and generating standalone installers for Windows and Linux. 
-
-> **Note:** Binary components (JRE and Browser) are excluded from the repository to keep it lightweight. Follow the steps below to re-bundle them.
+## 🚀 Quick Start (Development)
+1. **Build JAR:** Run `mvn clean package` to generate the application artifact.
+2. **Setup Structure:** Place the generated JAR in `/opt/academic-analytics/`.
+3. **Run:** Execute `./start_app.sh` to launch the server and the standalone UI applet.
 
 ---
 
-## 📦 1. Component Acquisition
+## 🏗 Build & Distribution Recipe
 
-Before building, download and place these components into your distribution folder.
+To keep the repository lightweight, binary components are excluded. Follow these steps to reconstruct the standalone installer.
 
-### A. Java Runtime Environment (JRE)
-The application requires a Windows-compatible JRE to run inside Wine or on a native Windows machine.
-* **Version:** Java 17 (LTS)
-* **Source:** [Adoptium Temurin Releases](https://adoptium.net/temurin/releases/?os=windows&arch=x64&package=jre)
-* **Action:** Extract the `.zip` and rename the folder to `jre` inside your build directory.
+### 1. Component Acquisition
+* **Java Runtime:** Download the [Adoptium Temurin Linux x64 JRE](https://adoptium.net/temurin/releases/?os=linux&arch=x64&package=jre) and extract it into the `./jre/` folder.
+* **Browser:** Download [Chromium Linux x64](https://download-chromium.appspot.com/?platform=Linux_x64) and extract the binaries to `./browsers/linux/chrome-linux/`.
+* **Application:** Compile the Spring Boot project and rename the resulting file to `mainapplication.jar`.
 
-### B. Chromium Browser Binaries
-To ensure the web-view works without requiring the user to have a specific browser installed.
-* **Source:** [Chromium Win64 Snapshots](https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Win_x64/)
-* **Action:** Place the binaries in the `browsers/` folder.
+### 2. Linux Package Structure (.deb)
+The distribution folder must follow the standard Debian layout:
 
-### C. The Application JAR
-* **Command:** `mvn clean package`
-* **Target:** Rename the resulting JAR to `mainapplication.jar` and place it in the root build folder.
 
----
 
-## 🛠 2. Windows Build Process (.exe)
+```text
+academic-pkg/
+├── DEBIAN/
+│   ├── control         <-- Package metadata (Dependencies: libnss3, libgbm1, etc.)
+│   ├── postinst        <-- Permission & Sandbox sticky bit configuration
+│   └── prerm           <-- Background process cleanup (Java & Chromium)
+└── opt/academic-analytics/
+    ├── jre/            <-- Bundled Java Runtime
+    ├── browsers/       <-- Bundled Chromium Engine
+    ├── mainapplication.jar
+    └── start_app.sh    <-- Launcher script with port-mutex logic
 
-We use **Inno Setup** running via Wine to compile the Windows installer.
+```
 
-1.  **Verify Structure:**
-    Ensure your directory looks like this:
-    ```text
-    AcademicAnalytics-Win/
-    ├── jre/                 <-- (Extracted Windows JRE)
-    ├── browsers/            <-- (Chromium Binaries)
-    ├── mainapplication.jar  <-- (Your Spring Boot App)
-    ├── start_app.bat        <-- (Launcher Script)
-    └── academic_installer.iss
-    ```
+### 3. Build Command
 
-2.  **Compile via Wine:**
-    Run the following command in your terminal:
-    ```bash
-    wine "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" academic_installer.iss
-    ```
+Generate the final installer using the Debian package manager:
 
-3.  **Result:** The `AcademicAnalytics_Setup.exe` will be generated in the `/` folder.
+```bash
+dpkg-deb --build academic-pkg
+
+```
 
 ---
 
-## 🐧 3. Linux Build Process (.deb)
+## 🛠 Technical Features
 
-To create a Debian package for Ubuntu/Mint users:
-
-1.  **Prepare the Layout:**
-    ```bash
-    mkdir -p academic-pkg/opt/academic-analytics
-    cp mainapplication.jar academic-pkg/opt/academic-analytics/
-    # (Copy Linux JRE here as well)
-    ```
-
-2.  **Build:**
-    ```bash
-    dpkg-deb --build academic-pkg
-    ```
+* **Standalone Applet:** The UI launches in a dedicated window using the `--app` flag, removing browser tabs and address bars for a native feel.
+* **Security Optimization:** Automatic configuration of the `--no-sandbox` flag and `chrome_sandbox` permissions to prevent `SIGTRAP` fatal errors.
+* **Local Data Persistence:** SQLite database and application logs are stored in `~/AcademicAnalytics` to ensure full write permissions without requiring root access during runtime.
+* **Port Mutex:** Built-in detection ensures only one instance runs on port 2006; secondary launches simply trigger the UI applet.
 
 ---
 
-## ⚠️ 4. Troubleshooting
-* **Port Conflict:** If the app fails to start during testing, port 2006 is likely locked.
-    * *Fix:* `sudo kill -9 $(sudo lsof -t -i:2006)`
-* **Bad EXE Format:** Ensure you are using a **64-bit JRE** with a **64-bit Wine prefix**.
-    * *Check:* `file jre/bin/java.exe` should return `PE32+ executable (console) x86-64`.
+## ⚠️ Troubleshooting
+
+* **UI opens in normal browser:** This occurs if the browser launches before the Spring Boot server is ready. The included `start_app.sh` uses a port-check loop to prevent this.
+* **SIGTRAP / Browser Crash:** Ensure the `postinst` script has correctly applied `root` ownership and `4755` permissions to the `chrome_sandbox` binary.
+* **Database Read-Only:** Verify the `AcademicAnalytics` folder exists in your home directory with proper user permissions.
 
 ---
 
-## 🔗 Useful Links
-* [Inno Setup Documentation](https://jrsoftware.org/ishelp/)
-* [Spring Boot Deployment Guide](https://docs.spring.io/spring-boot/docs/current/reference/html/deployment.html)
