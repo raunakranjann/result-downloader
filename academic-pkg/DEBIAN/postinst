@@ -1,34 +1,40 @@
 #!/bin/bash
 set -e
 
+APP_DIR="/opt/academic-analytics"
+
 # 1. Secure Permissions for the Application Folder
 # 755 allows everyone to read/execute, but only root to write.
-chmod -R 755 /opt/academic-analytics/
+chmod -R 755 "$APP_DIR"
 
 # 2. Set execute permissions for the bundled Linux JRE
-chmod +x /opt/academic-analytics/jre/bin/java
+chmod +x "$APP_DIR/jre/bin/java"
 
 # 3. Set execute permissions for the bundled Chromium & Sandbox
-# These specific permissions are required for Playwright to launch the browser.
-if [ -d "/opt/academic-analytics/browsers/linux/chrome-linux" ]; then
+if [ -d "$APP_DIR/browsers/linux/chrome-linux" ]; then
     echo "Configuring bundled browser permissions..."
-    chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome
-    chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome-wrapper
+    chmod +x "$APP_DIR/browsers/linux/chrome-linux/chrome"
+    chmod +x "$APP_DIR/browsers/linux/chrome-linux/chrome-wrapper"
     
-    # The sandbox MUST have 4755 (setuid) to function on most Linux distros.
-    # This prevents the "Failed to create driver" error.
-    chmod 4755 /opt/academic-analytics/browsers/linux/chrome-linux/chrome_sandbox || true
+    # CRITICAL: The sandbox MUST be owned by root and have 4755 (setuid).
+    # This prevents the "SIGTRAP" fatal error and ensures Linux trusts the binary.
+    if [ -f "$APP_DIR/browsers/linux/chrome-linux/chrome_sandbox" ]; then
+        chown root:root "$APP_DIR/browsers/linux/chrome-linux/chrome_sandbox"
+        chmod 4755 "$APP_DIR/browsers/linux/chrome-linux/chrome_sandbox"
+    fi
 fi
 
 # 4. Set execute permissions for your launch script
-chmod +x /opt/academic-analytics/start_app.sh
+chmod +x "$APP_DIR/start_app.sh"
 
-# 5. Force update the icon and desktop database
-# Ensures the app appears in the Ubuntu/Debian application menu immediately.
-if [ -d "/usr/share/applications" ]; then
+# 5. Force update the desktop database
+# This ensures the app appears in the application menu immediately after install.
+if [ -f "/usr/share/applications/academic-analytics.desktop" ]; then
+    chmod +x /usr/share/applications/academic-analytics.desktop
     update-desktop-database /usr/share/applications || true
 fi
 
+# 6. Update Icon Cache
 if [ -d "/usr/share/icons/hicolor" ]; then
     gtk-update-icon-cache /usr/share/icons/hicolor || true
 fi

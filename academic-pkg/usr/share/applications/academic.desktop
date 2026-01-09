@@ -1,8 +1,12 @@
 [Desktop Entry]
 Name=Academic Analytics
 Comment=Download and Archive Academic Results
-Exec=/usr/bin/bash /opt/academic-analytics/start_app.sh
+# Forces the app to launch via the bash script and use the standalone window mode
+Exec=/usr/bin/bash /opt/academic-analytics/start_app.sh --app=http://localhost:2006/
 Icon=/opt/academic-analytics/Icon.png
 Terminal=false
 Type=Application
 Categories=Education;Utility;
+StartupNotify=true
+# Ensures the window is grouped correctly in the Linux taskbar
+StartupWMClass=academic-analytics

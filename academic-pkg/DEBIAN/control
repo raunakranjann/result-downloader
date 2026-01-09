@@ -4,6 +4,8 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Raunak Ranjan <raunakranjann@gmail.com>
+Depends: libnss3, libatk1.0-0, libatk-bridge2.0-0, libcups2, libdrm2, libxkbcommon0, libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libgbm1, libasound2
 Description: Standalone Academic Result Downloader and Archival System.
- Includes bundled JRE and Chromium for a single-install experience.
+ Academic Analytics includes a bundled JRE and Chromium engine to provide 
+ a single-install experience for academic data management and archival.
  
