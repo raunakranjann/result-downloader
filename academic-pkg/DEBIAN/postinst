@@ -2,25 +2,29 @@
 set -e
 
 # 1. Secure Permissions for the Application Folder
-# We no longer need 777 because data is now stored in the User's Home folder.
-# We set standard read/execute permissions for the binaries.
+# 755 allows everyone to read/execute, but only root to write.
 chmod -R 755 /opt/academic-analytics/
 
 # 2. Set execute permissions for the bundled Linux JRE
-# This is required to allow the shell to launch the Java process.
 chmod +x /opt/academic-analytics/jre/bin/java
 
-# 3. Set execute permissions for the bundled Chromium
-# Required for the standalone applet UI.
+# 3. Set execute permissions for the bundled Chromium & Sandbox
+# These specific permissions are required for Playwright to launch the browser.
 if [ -d "/opt/academic-analytics/browsers/linux/chrome-linux" ]; then
+    echo "Configuring bundled browser permissions..."
     chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome
+    chmod +x /opt/academic-analytics/browsers/linux/chrome-linux/chrome-wrapper
+    
+    # The sandbox MUST have 4755 (setuid) to function on most Linux distros.
+    # This prevents the "Failed to create driver" error.
+    chmod 4755 /opt/academic-analytics/browsers/linux/chrome-linux/chrome_sandbox || true
 fi
 
 # 4. Set execute permissions for your launch script
 chmod +x /opt/academic-analytics/start_app.sh
 
 # 5. Force update the icon and desktop database
-# This ensures your .desktop file and icon appear in the Application Menu immediately.
+# Ensures the app appears in the Ubuntu/Debian application menu immediately.
 if [ -d "/usr/share/applications" ]; then
     update-desktop-database /usr/share/applications || true
 fi
